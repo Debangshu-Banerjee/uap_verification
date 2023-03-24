@@ -36,28 +36,23 @@ class ZonoUAPTransformer:
             with grb.Model(env=env) as m:
                 epsilons = m.addMVar(self.input_size, lb=-1, ub=1, name='epsilons')
                 individual_lbs = []
-                objective_vars = []
                 for i, input_coefs in enumerate(actual_coefs):
                     input_coefs = input_coefs.detach().numpy()
                     t = m.addMVar(input_coefs.shape[0], lb=float('-inf'), ub=float('inf'), name=f'individual_lbs_{i}')
                     m.addConstr(input_coefs @ epsilons + lbs[i] == t)
-                    individual_lbs.append(t)
-                    m.update()
-                
-                for i in range(input_coefs.shape[0]):
+                    temp_vars = []
+                    for i in range(input_coefs.shape[0]):
+                        temp_vars.append(t[i])
                     t_min = m.addVar(lb=float('-inf'), ub=float('inf'), name=f'objective_vars_{i}')
-                    for var in individual_lbs:
-                        m.addConstr(var[i] <= t_min)
+                    m.addConstr(t_min == grb.min_(temp_vars))
+                    individual_lbs.append(t_min)
                     m.update()
-                    objective_vars.append(t_min)
-
-                global_lb = None
-                for objective_var in objective_vars:
-                    m.setObjective(objective_var, grb.GRB.MINIMIZE)
-                    _ = m.optimize()
-                    new_lb = objective_var.X 
-                    if global_lb is None or global_lb > new_lb:
-                        global_lb = new_lb
-
+                final_val = m.addVar(lb=float('-inf'), ub=float('inf'), name='final_objective')
+                for objective_var in individual_lbs:
+                    m.addConstr(objective_var <= final_val)
+                    m.update()
+                m.setObjective(final_val, grb.GRB.MINIMIZE)
+                _ = m.optimize()
+                global_lb = final_val.X
                 return global_lb  
 
