@@ -14,13 +14,61 @@ class UAPAnalyzerBackendWrapper:
         self.prop_coefs = []
         self.prop_centers = []
     
+
+    def get_radius(self):
+        radius_l = self.args.radius_l
+        radius_r = self.args.radius_r
+        opt_baseline_radius = self.get_opt_radius(radius_l=radius_l, radius_r=radius_r, use_uap_verifier=False)
+        opt_uap_radius = self.get_opt_radius(radius_l=radius_l, radius_r=radius_r, use_uap_verifier=True)
+        print("Baseline radius", opt_baseline_radius)
+        print("UAP radius", opt_uap_radius)
+        print("Improvement", (opt_uap_radius - opt_baseline_radius) / opt_baseline_radius * 100)
+        return opt_baseline_radius, opt_uap_radius
+
+    def update_props(self, eps):
+        for prop in self.props:
+            prop.update_bounds(eps)
+
+    def get_opt_radius(self, radius_l, radius_r, use_uap_verifier, tolerence_lim=1e-7):
+        l = radius_l
+        r = radius_r
+        optimum_radius = 0.0
+        while (l < r) and (r - l) > tolerence_lim:
+            mid = (l + r) / 2.0
+            self.update_props(mid)
+            verification_res = self.verify(use_uap_verifier=use_uap_verifier)
+            if verification_res is True:
+                l = mid
+                optimum_radius = max(optimum_radius, mid)
+            else:
+                r = mid
+        return optimum_radius
+    
+
+    def verify(self, use_uap_verifier=False):
+        baseline_verfier = UAPBaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
+        baseline_result = baseline_verfier.run()
+        if baseline_result.status is Status.VERIFIED:
+            return True
+        else:
+            print("Baseline lb", baseline_result.global_lb)
+            if use_uap_verifier is False:
+                return False
+            coefs, centers =  baseline_verfier.get_centers_coefs()
+            UAP_result = UAPAnalyzerBackend(props=self.props, net=self.net, args=self.args, coefs=coefs, centers=centers).run()
+            if UAP_result.status is Status.VERIFIED:
+                return True
+            else:
+                return False
+
+
+    
     def run(self) -> UAPResult:
         baseline_verfier = UAPBaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
         baseline_result = baseline_verfier.run()
         if baseline_result.status is Status.VERIFIED:
             UAP_result = baseline_result
         else:
-            print("Baseline lb", baseline_result.global_lb)
             coefs, centers =  baseline_verfier.get_centers_coefs()
             UAP_result = UAPAnalyzerBackend(props=self.props, net=self.net, args=self.args, coefs=coefs, centers=centers).run()
         return UAPResult(UAP_res=UAP_result, baseline_res=baseline_result)
@@ -72,10 +120,10 @@ class UAPBaselineAnalyzerBackend:
             assert prop.get_input_clause_count() == 1
             transformer = domain_transformer(net=self.net, prop=prop.get_input_clause(0), domain=self.args.baseline_domain)
             lb = transformer.compute_lb()
-            min_lb = torch.min(lb)
-            if global_lb is None or global_lb < min_lb:
-                global_lb = min_lb 
-            if min_lb >= 0:
+            max_lb = torch.max(lb)
+            if global_lb is None or global_lb < max_lb:
+                global_lb = max_lb 
+            if max_lb >= 0:
                 baseline_status = Status.VERIFIED
                 break
             if hasattr(transformer, 'final_coef_center'):

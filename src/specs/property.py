@@ -4,7 +4,7 @@ from src.specs.out_spec import OutSpecType
 
 class Property:
     def __init__(self, input_lbs, input_ubs, inp_type, out_constr, dataset, input=None):
-        if inp_type == InputSpecType.LINF:
+        if inp_type in [InputSpecType.LINF, InputSpecType.UAP]:
             self.input_props = [InputProperty(input_lbs, input_ubs, out_constr, dataset, input=input)]
         # Since the properties in this case can be conjunctive
         elif inp_type == InputSpecType.PATCH:
@@ -22,6 +22,11 @@ class Property:
         self.inp_type = inp_type
         self.out_constr = out_constr
         self.dataset = dataset
+
+    def update_bounds(self, eps):
+        if self.inp_type is not InputSpecType.UAP:
+            raise ValueError("Can not update the specs other than uap.")
+        self.input_props[0].update_bounds(eps=eps)
 
     def is_local_robustness(self):
         return self.out_constr.constr_type == OutSpecType.LOCAL_ROBUST

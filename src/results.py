@@ -17,4 +17,10 @@ class UAPResultList:
 
     def add_results(self, res: UAPResult):
         self.result_list.append(res)
-        
+
+class UAPSingleRadiusRes:
+    def __init__(self, domain, input_per_prop, radius, time_taken):
+        self.domain = domain
+        self.input_per_prop = input_per_prop
+        self.radius = radius
+        self.time_taken = time_taken

@@ -8,12 +8,31 @@ from src.bnb import Split
 from src.domains.deeppoly import DeeppolyTransformer
 from src.domains.deepz import ZonoTransformer
 from src.specs.out_spec import OutSpecType
-
+from src.common.dataset import Dataset
 
 class InputSpecType(Enum):
     LINF = 1
     PATCH = 2
     GLOBAL = 3
+    UAP = 4
+
+def get_mean_std(dataset):
+    if dataset == Dataset.MNIST:
+        means = [0]
+        stds = [1]
+    elif dataset == Dataset.CIFAR10:
+        # For the model that is loaded from cert def this normalization was
+        # used
+        stds = [0.2023, 0.1994, 0.2010]
+        means = [0.4914, 0.4822, 0.4465]
+        # means = [0.0, 0.0, 0.0]
+        # stds = [1, 1, 1]
+    elif dataset == Dataset.ACAS:
+        means = [19791.091, 0.0, 0.0, 650.0, 600.0]
+        stds = [60261.0, 6.28318530718, 6.28318530718, 1100.0, 1200.0]
+    else:
+        raise ValueError("Unsupported Dataset!")
+    return torch.tensor(means).reshape(-1, 1, 1), torch.tensor(stds).reshape(-1, 1, 1)
 
 
 class InputProperty(object):
@@ -26,6 +45,21 @@ class InputProperty(object):
             self.input = input.flatten()
         else:
             self.input = None
+    
+    def update_bounds(self, eps):
+        ilb = torch.clip(self.input - eps, min=0., max=1.)
+        iub = torch.clip(self.input + eps, min=0., max=1.)
+
+        mean, std = get_mean_std(self.dataset)
+
+        ilb = (ilb - mean) / std
+        iub = (iub - mean) / std
+        self.input = (self.input - mean) / std
+
+        ilb = ilb.reshape(-1)
+        iub = iub.reshape(-1)
+        self.input_lb = ilb
+        self.input_ub = iub
 
     def __hash__(self):
         return hash((self.input_lb.numpy().tobytes(), self.input_ub.numpy().tobytes(), self.dataset))

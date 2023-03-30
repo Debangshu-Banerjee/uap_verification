@@ -215,15 +215,26 @@ def score_relu_esip(zono_transformer):
 
     return relu_score
 
+def process_input_for_sink_label(inputs, labels, sink_label, target_count=0):
+    new_inputs = []
+    new_labels = []
+    count = 0
+    for i in range(len(inputs)):
+        if labels[i] is not sink_label and count < target_count:
+            new_inputs.append(inputs[i])
+            new_labels.append(labels[i])
+            count += 1
+    new_inputs = torch.stack(new_inputs)
+    new_labels = torch.stack(new_labels)
+    return new_inputs, new_labels
 
-def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None):
+def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_label=None):
     if dataset == Dataset.MNIST or dataset == Dataset.CIFAR10:
         if spec_type == InputSpecType.LINF:
             if count is None:
                 count = 100
             testloader = prepare_data(dataset, batch_size=count)
             inputs, labels = next(iter(testloader))
-            print("Labels", labels)
             props = get_linf_spec(inputs, labels, eps, dataset)
         elif spec_type == InputSpecType.PATCH:
             if count is None:
@@ -236,6 +247,12 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None):
             pos_patch_count = width * length
             specs_per_patch = pos_patch_count
             # labels = labels.unsqueeze(1).repeat(1, pos_patch_count).flatten()
+        elif spec_type == InputSpecType.UAP:
+            testloader = prepare_data(dataset, batch_size=2*count)
+            inputs, labels = next(iter(testloader))
+            inputs, labels = process_input_for_sink_label(inputs=inputs, labels=labels, 
+                                                          sink_label=sink_label, target_count=count)
+            props = get_UAP_spec(inputs, eps, dataset, sink_label=torch.tensor(sink_label))
         return props, inputs
     elif dataset == Dataset.ACAS:
         return get_acas_props(count), None
@@ -274,6 +291,30 @@ def get_linf_spec(inputs, labels, eps, dataset):
         properties.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset, input=image))
 
     return properties
+
+def get_UAP_spec(inputs, eps, dataset, sink_label):
+    properties = []
+
+    for i in range(len(inputs)):
+        image = inputs[i]
+
+        ilb = torch.clip(image - eps, min=0., max=1.)
+        iub = torch.clip(image + eps, min=0., max=1.)
+
+        mean, std = get_mean_std(dataset)
+
+        ilb = (ilb - mean) / std
+        iub = (iub - mean) / std
+        image = (image - mean) / std
+
+        ilb = ilb.reshape(-1)
+        iub = iub.reshape(-1)
+
+        out_constr = Constraint(OutSpecType.LOCAL_ROBUST, sink_label=sink_label)
+        properties.append(Property(ilb, iub, InputSpecType.UAP, out_constr, dataset, input=image))
+
+    return properties
+
 
 
 def get_patch_specs(inputs, labels, eps, dataset, p_width=2, p_length=2):

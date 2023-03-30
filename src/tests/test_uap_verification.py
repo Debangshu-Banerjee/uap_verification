@@ -9,11 +9,8 @@ import src.uap_analyzer as uap_ver
 
 class TestBasicUap(TestCase):
     def test_mnist_uap(self):
-        eps = 0.11
-        for i in range(10):
-            uap_verfication_args = uap_ver.UapAnalysisArgs(
-                domain=Domain.DEEPZ_UAP, baseline_domain=Domain.DEEPZ, dataset=Dataset.MNIST, 
-                spec_type=InputSpecType.LINF, count=2, count_per_prop=2, eps=eps, net=config.MNIST_FFN_01,
-                timeout=100, output_dir='results/')
-            uap_ver.UapVerification(uap_verfication_args)
-            eps += 0.01
+        uap_verfication_args = uap_ver.UapAnalysisArgs(
+            domain=Domain.DEEPZ_UAP, baseline_domain=Domain.DEEPZ, dataset=Dataset.MNIST, sink_label=0,
+            spec_type=InputSpecType.UAP, count=10, count_per_prop=20, eps=0.1, net=config.MNIST_FFN_01,
+            timeout=100, output_dir='results/', radius_l=0.05, radius_r=0.25)
+        uap_ver.UapVerification(uap_verfication_args)
