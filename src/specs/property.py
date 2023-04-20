@@ -24,7 +24,7 @@ class Property:
         self.dataset = dataset
 
     def update_bounds(self, eps):
-        if self.inp_type is not InputSpecType.UAP:
+        if self.inp_type not in [InputSpecType.UAP, InputSpecType.LINF]:
             raise ValueError("Can not update the specs other than uap.")
         self.input_props[0].update_bounds(eps=eps)
 

@@ -116,20 +116,25 @@ class UAPBaselineAnalyzerBackend:
         start_time = time.time()
         baseline_status = Status.UNKNOWN
         global_lb = None
-        for prop in self.props:
+        print("\nLength ", len(self.props))
+        for i, prop in enumerate(self.props):
             assert prop.get_input_clause_count() == 1
             transformer = domain_transformer(net=self.net, prop=prop.get_input_clause(0), domain=self.args.baseline_domain)
             lb = transformer.compute_lb()
-            max_lb = torch.max(lb)
-            if global_lb is None or global_lb < max_lb:
-                global_lb = max_lb 
-            if max_lb >= 0:
+            print(f'Full lower bound {(i+1)}', lb)
+            if global_lb is None:
+                global_lb = lb
+            else:
+                for i in range(global_lb.shape[0]):
+                    global_lb[i] = max(lb[i], global_lb[i])
+            if torch.min(global_lb) >= 0:
                 baseline_status = Status.VERIFIED
-                break
+            print(f'Full global lower bound {(i+1)}', global_lb)
             if hasattr(transformer, 'final_coef_center'):
                 coef, center = transformer.final_coef_center()
                 self.centers.append(center)
                 self.coefs.append(coef)
+        
         time_taken = time.time() - start_time
         baseline_result = UAPSingleRes(domain=self.args.baseline_domain, 
                                        input_per_prop=self.args.count_per_prop, status=baseline_status, 

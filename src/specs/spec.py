@@ -215,6 +215,20 @@ def score_relu_esip(zono_transformer):
 
     return relu_score
 
+def process_input_for_target_label(inputs, labels, target_label, target_count=0):
+    new_inputs = []
+    new_labels = []
+    count = 0
+    for i in range(len(inputs)):
+        if labels[i].item() is target_label and count < target_count:
+            new_inputs.append(inputs[i])
+            new_labels.append(labels[i])
+            count += 1
+    new_inputs = torch.stack(new_inputs)
+    new_labels = torch.stack(new_labels)
+    return new_inputs, new_labels
+
+
 def process_input_for_sink_label(inputs, labels, sink_label, target_count=0):
     new_inputs = []
     new_labels = []
@@ -233,8 +247,10 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_
         if spec_type == InputSpecType.LINF:
             if count is None:
                 count = 100
-            testloader = prepare_data(dataset, batch_size=count)
+            testloader = prepare_data(dataset, batch_size=count*20)
             inputs, labels = next(iter(testloader))
+            inputs, labels = process_input_for_target_label(inputs=inputs, labels=labels, 
+                                                          target_label=sink_label, target_count=count)            
             props = get_linf_spec(inputs, labels, eps, dataset)
         elif spec_type == InputSpecType.PATCH:
             if count is None:
