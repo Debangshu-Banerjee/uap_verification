@@ -50,13 +50,112 @@ class DiffDeepPoly:
 
         return new_delta_lb_coef, delta_lb_bias, new_delta_ub_coef, delta_ub_bias
 
+    def pos_neg_weight_decomposition(self, coef):
+        neg_comp = torch.where(coef < 0, coef, torch.zeros_like(coef))
+        pos_comp = torch.where(coef >= 0, coef, torch.zeros_like(coef))
+        return neg_comp, pos_comp
+    
+
+    def concretize_bounds(self, delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias,
+                           delta_lb_layer, delta_ub_layer):
+        pass
+
 
 
     # Consider cases based on the state of the relu for different propagation.
     def handle_relu(self, delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias, 
                     lb_input1_layer, ub_input1_layer, lb_input2_layer, ub_input2_layer,
                     delta_lb_layer, delta_ub_layer):
-        pass
+        
+        input1_active = (lb_input1_layer >= 0)
+        input1_passive = (ub_input1_layer <= 0)
+        input1_unsettled = (lb_input1_layer < 0 & ub_input1_layer > 0)
+
+        input2_active = (lb_input2_layer >= 0)
+        input2_passive = (ub_input2_layer <= 0)
+        input2_unsettled = (lb_input2_layer < 0 & ub_input2_layer > 0)
+
+        delta_active = (delta_lb_layer >= 0)
+        delta_passive = (delta_ub_layer <= 0)
+        delta_unsettled = (delta_lb_layer < 0 & delta_ub_layer > 0)
+
+
+        lambda_lb = torch.zeros(lb_input1_layer.size())
+        lambda_ub = torch.zeros(lb_input1_layer.size())
+        mu_lb = torch.zeros(lb_input1_layer.size())
+        mu_ub = torch.zeros(lb_input1_layer.size())
+        # case 1 x.ub <= 0 and y.ub <= 0
+        # case 2 x.lb >=  0 and y.lb >= 0
+        lambda_lb = torch.where(input1_active & input2_active, torch.ones(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input1_active & input2_active, torch.ones(lb_input1_layer.size()), lambda_ub)
+        # case 3 x.lb >= 0 and y.ub <= 0
+        lambda_lb = torch.where(input1_active & input2_passive, torch.zeros(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input1_active & input2_passive, torch.ones(lb_input1_layer.size()), lambda_ub)
+        mu_lb = torch.where(input1_active & input2_passive, lb_input1_layer, mu_lb)
+        mu_ub = torch.where(input1_active & input2_passive, ub_input2_layer, mu_ub)
+
+        #case 4 (x.lb < 0 and x.ub > 0) and y.ub <= 0
+        lambda_lb = torch.where(input1_unsettled & input2_passive, torch.zeros(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input1_unsettled & input2_passive, torch.ones(lb_input1_layer.size()), lambda_ub)
+        mu_lb = torch.where(input1_unsettled & input2_passive, torch.zeros(lb_input1_layer.size()), mu_lb)
+        mu_ub = torch.where(input1_unsettled & input2_passive, ub_input2_layer, mu_ub)
+
+        #case 5 (x.ub <= 0) and y.lb >= 0
+        lambda_lb = torch.where(input1_passive & input2_active, torch.ones(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input1_passive & input2_active, torch.zeros(lb_input1_layer.size()), lambda_ub)
+        mu_lb = torch.where(input1_passive & input2_active, -ub_input1_layer, mu_lb)
+        mu_ub = torch.where(input1_passive & input2_active, -lb_input2_layer, mu_ub)
+
+        # case 6 (x.ub <= 0) and (y.lb < 0 and y.ub > 0)
+        lambda_lb = torch.where(input1_passive & input2_unsettled, torch.ones(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input1_passive & input2_unsettled, torch.zeros(lb_input1_layer.size()), lambda_ub)
+        mu_lb = torch.where(input1_passive & input2_unsettled, -ub_input1_layer, mu_lb)
+        mu_ub = torch.where(input1_passive & input2_unsettled, torch.zeros(lb_input1_layer.size()), mu_ub)     
+
+        # case 7 (x.lb >= 0) and (y.lb < 0 and y.ub > 0)
+        lambda_lb = torch.where(input1_active & input2_unsettled, torch.zeros(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input1_active & input2_unsettled, torch.ones(lb_input1_layer.size()), lambda_ub)
+        mu_lb = torch.where(input1_active & input2_unsettled, torch.min(lb_input1_layer, delta_lb_layer), mu_lb)
+        mu_ub = torch.where(input1_active & input2_unsettled, torch.zeros(lb_input1_layer.size()), mu_ub)
+
+        # case 8 (x.lb < 0 and x.ub > 0) and (y.lb >= 0)
+        lambda_lb = torch.where(input2_unsettled & input2_active, torch.ones(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input2_unsettled & input2_active, torch.zeros(lb_input1_layer.size()), lambda_ub)
+        mu_lb = torch.where(input2_unsettled & input2_active, torch.zeros(lb_input1_layer.size()), mu_lb)
+        mu_ub = torch.where(input2_unsettled & input2_active, torch.max(delta_ub_layer, -lb_input2_layer), mu_ub)
+
+        # case 9 (x.lb < 0 and x.ub > 0) and (y.lb < 0 and y.ub > 0) and (delta_lb >= 0)
+        lambda_lb = torch.where(input1_unsettled & input2_unsettled & delta_active, torch.zeros(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input1_unsettled & input2_unsettled & delta_active, torch.ones(lb_input1_layer.size()), lambda_ub)
+        mu_lb = torch.where(input1_unsettled & input2_unsettled & delta_active, torch.zeros(lb_input1_layer.size()), mu_lb)
+        mu_ub = torch.where(input1_unsettled & input2_unsettled & delta_active, torch.zeros(lb_input1_layer.size()), mu_ub)
+
+        # case 10 (x.lb < 0 and x.ub > 0) and (y.lb < 0 and y.ub > 0) and (delta_ub <= 0)
+        lambda_lb = torch.where(input1_unsettled & input2_unsettled & delta_passive, torch.ones(lb_input1_layer.size()), lambda_lb)
+        lambda_ub = torch.where(input1_unsettled & input2_unsettled & delta_passive, torch.zeros(lb_input1_layer.size()), lambda_ub)
+        mu_lb = torch.where(input1_unsettled & input2_unsettled & delta_passive, torch.zeros(lb_input1_layer.size()), mu_lb)
+        mu_ub = torch.where(input1_unsettled & input2_unsettled & delta_passive, torch.zeros(lb_input1_layer.size()), mu_ub)
+        
+        # case 11 (x.lb < 0 and x.ub > 0) and (y.lb < 0 and y.ub > 0) and (delta_lb < 0 and delta_ub > 0)
+        temp_mu = (delta_lb_layer * delta_ub_layer) / (delta_ub_layer - delta_lb_layer + 1e-15)
+        temp_lambda_lb = (-delta_lb_layer) / (delta_ub_layer - delta_lb_layer + 1e-15)
+        temp_lambda_ub = delta_ub_layer / (delta_ub_layer - delta_lb_layer + 1e-15)
+        lambda_lb = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, temp_lambda_lb, lambda_lb)
+        lambda_ub = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, temp_lambda_ub, lambda_ub)
+        mu_lb = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, -temp_mu, mu_lb)
+        mu_ub = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, temp_mu, mu_ub)
+
+        # Segregate the +ve and -ve components of the coefficients
+        neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(delta_lb_coef)
+        neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(delta_ub_coef)
+
+        delta_lb_coef = pos_comp_lb * lambda_lb + neg_comp_lb * lambda_ub
+        delta_lb_bias = pos_comp_lb * mu_lb + neg_comp_lb * mu_ub
+        delta_ub_coef = pos_comp_ub * lambda_ub + neg_comp_ub * lambda_lb
+        delta_ub_bias = pos_comp_ub * mu_ub + neg_comp_ub * mu_lb
+
+        return delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias
+
 
 
     def back_substitution(self):
