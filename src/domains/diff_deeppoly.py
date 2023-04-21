@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from src.common.network import LayerType
 
 class DiffDeepPoly:
     def __init__(self, input1, input2, net, lb_input1, ub_input1, lb_input2, ub_input2) -> None:
@@ -11,6 +12,7 @@ class DiffDeepPoly:
         self.lb_input2 = lb_input2
         self.ub_input2 = ub_input2
         self.diff = input1 - input2
+        self.linear_conv_layer_indices = []
 
     # Bias cancels out (Ax + b - Ay - b) = A(x - y) = A * \delta 
     def handle_linear(self, linear_wt, bias, delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias):
@@ -58,7 +60,12 @@ class DiffDeepPoly:
 
     def concretize_bounds(self, delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias,
                            delta_lb_layer, delta_ub_layer):
-        pass
+        lb_neg_comp, lb_pos_comp = self.pos_neg_weight_decomposition(delta_lb_coef)
+        ub_neg_comp, ub_pos_comp = self.pos_neg_weight_decomposition(delta_ub_coef)
+        lb = lb_neg_comp * delta_ub_layer + lb_pos_comp * delta_lb_layer + delta_lb_bias
+        ub = ub_neg_comp * delta_lb_layer + ub_pos_comp * delta_ub_layer + delta_ub_bias
+        return lb, ub
+
 
 
 
@@ -158,9 +165,29 @@ class DiffDeepPoly:
 
 
 
-    def back_substitution(self):
-        pass
+    def back_substitution(self, layer_index, delta_lbs, delta_ubs):
+        if layer_index != len(delta_lbs):
+            raise ValueError("Size of lower bounds computed in previous layers don't match")
+        # Needs the back propagation implementation.
 
 
     def run(self):
-        pass
+        delta_lbs = []
+        delta_ubs = []
+        if self.net is None:
+            raise ValueError("Passed network can not be none")
+        for ind, layer in enumerate(self.net):
+            if layer.type in [LayerType.Linear, LayerType.Conv2D]:
+                self.linear_conv_layer_indices.append(ind)
+        
+        if len(self.lb_input1) != len(self.linear_conv_layer_indices) or len(self.ub_input1) != len(self.linear_conv_layer_indices):
+            raise ValueError("Input1 bounds do not match")
+        if len(self.lb_input2) != len(self.linear_conv_layer_indices) or len(self.ub_input2) != len(self.linear_conv_layer_indices):
+            raise ValueError("Input2 bounds do not match")
+
+        for layer_index in self.linear_conv_layer_indices:
+            curr_delta_lb, curr_delta_ub = self.back_substitution(layer_index=layer_index, delta_lbs=delta_lbs, delta_ubs=delta_ubs)
+            delta_lbs.append(curr_delta_lb)
+            delta_ubs.append(curr_delta_ub)
+
+        return delta_lbs, delta_ubs
