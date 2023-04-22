@@ -1,18 +1,27 @@
 import torch
 import torch.nn.functional as F
 from src.common.network import LayerType
+from src.util import compute_input_shapes
 
 class DiffDeepPoly:
     def __init__(self, input1, input2, net, lb_input1, ub_input1, lb_input2, ub_input2) -> None:
         self.input1 = input1
         self.input2 = input2
+        if self.input1.shape[0] == 784:
+            self.input_shape = (1, 28, 28)
+        elif self.input1.shape[0] == 3072:
+            self.input_shape = (3, 32, 32)
+        else:
+            raise ValueError(f'Unrecognised input shape {self.input1.shape}')
         self.net = net
         self.lb_input1 = lb_input1
         self.ub_input1 = ub_input1
         self.lb_input2 = lb_input2
         self.ub_input2 = ub_input2
+        self.shapes = compute_input_shapes(net=self.net, input_shape=self.input_shape)
         self.diff = input1 - input2
         self.linear_conv_layer_indices = []
+
 
     # Bias cancels out (Ax + b - Ay - b) = A(x - y) = A * \delta 
     def handle_linear(self, linear_wt, bias, delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias):
@@ -29,7 +38,7 @@ class DiffDeepPoly:
     # while back prop the delta coef shape [rows, postconv shape after flattening].
     def handle_conv(self, conv_weight, conv_bias, delta_lb_coef, delta_lb_bias, 
                     delta_ub_coef, delta_ub_bias, preconv_shape, postconv_shape,
-                    stride, padding, groups, dilation):
+                    stride, padding, groups=1, dilation=1):
         kernel_hw = conv_weight.shape[-2:]
         h_padding = (preconv_shape[1] + 2 * padding[0] - 1 - dilation[0] * (kernel_hw[0] - 1)) % stride[0]
         w_padding = (preconv_shape[2] + 2 * padding[1] - 1 - dilation[1] * (kernel_hw[1] - 1)) % stride[1]
@@ -65,8 +74,6 @@ class DiffDeepPoly:
         lb = lb_neg_comp * delta_ub_layer + lb_pos_comp * delta_lb_layer + delta_lb_bias
         ub = ub_neg_comp * delta_lb_layer + ub_pos_comp * delta_ub_layer + delta_ub_bias
         return lb, ub
-
-
 
 
     # Consider cases based on the state of the relu for different propagation.
@@ -164,12 +171,76 @@ class DiffDeepPoly:
         return delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias
 
 
+    def get_layer_size(self, layer_index):
+        if self.net[layer_index].type is LayerType.Linear:
+            return self.shapes[layer_index + 1]
+        if self.net[layer_index].type is LayerType.Conv2D:
+            shape = self.shapes[layer_index+ 1]
+            return (shape[0] * shape[1] * shape[2])
+        
 
-    def back_substitution(self, layer_index, delta_lbs, delta_ubs):
-        if layer_index != len(delta_lbs):
+    # layer index : index of the current layer
+    # linear layer index: No of linear layers seen before the current layer.
+    def back_substitution(self, layer_index, linear_layer_index, delta_lbs, delta_ubs):
+        if linear_layer_index != len(delta_lbs):
             raise ValueError("Size of lower bounds computed in previous layers don't match")
-        # Needs the back propagation implementation.
+        delta_lb = None
+        delta_ub = None
+        delta_lb_coef = None
+        delta_lb_bias = None
+        delta_ub_coef = None
+        delta_ub_bias = None
+        for i in reversed(range(layer_index)):
+            # Concretize the bounds for the previous layers.
+            if self.net[i].type in [LayerType.Linear, LayerType.Conv2D] and delta_lb_coef is not None:
+                new_delta_lb, new_delta_ub = self.concretize_bounds(delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias,
+                                                                    delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias,
+                                                                    delta_lb_layer=delta_lbs[linear_layer_index], 
+                                                                    delta_ub_layer=delta_ubs[linear_layer_index])
+                delta_lb = (new_delta_lb if delta_lb is None else (torch.max(delta_lb, new_delta_lb)))
+                delta_ub = (new_delta_ub if delta_ub is None else (torch.min(delta_ub, new_delta_ub)))
+            
+            if delta_lb_coef is None:
+                layer_size = self.get_layer_size(layer_index=linear_layer_index)
+                delta_lb_coef = torch.eye(n=layer_size)
+                delta_lb_bias = torch.zeros(layer_size)
+                delta_ub_coef = torch.eye(n=layer_size)
+                delta_ub_bias = torch.zeros(layer_size)                
 
+            curr_layer = self.net[i] 
+            if curr_layer.type is LayerType.Linear:
+               delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias = self.handle_linear(linear_wt=curr_layer.weight,
+                                     bias=None, delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias, 
+                                     delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias)
+               linear_layer_index -= 1
+            elif curr_layer.type is LayerType.Conv2D:
+                delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias = self.handle_conv(conv_weight=curr_layer.weight, conv_bias=None, 
+                                        delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias, 
+                                        delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias, 
+                                        preconv_shape=self.shapes[linear_layer_index-1], postconv_shape=self.shapes[linear_layer_index],
+                                        stride=curr_layer.stride, padding=curr_layer.padding)
+                linear_layer_index -= 1
+            elif curr_layer.type is LayerType.ReLU:
+                delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias = self.handle_relu(delta_lb_coef=delta_lb_coef, 
+                                                delta_lb_bias=delta_lb_bias, delta_ub_coef=delta_ub_coef, 
+                                                delta_ub_bias=delta_ub_bias, lb_input1_layer=self.lb_input1[linear_layer_index], 
+                                                ub_input1_layer=self.ub_input1[linear_layer_index], 
+                                                lb_input2_layer=self.lb_input2[linear_layer_index], 
+                                                ub_input2_layer=self.ub_input2[linear_layer_index],
+                                                delta_lb_layer=delta_lbs[linear_layer_index], 
+                                                delta_ub_layer=delta_ubs[linear_layer_index])
+            else:
+                raise NotImplementedError(f'diff verifier for {curr_layer.type} is not implemented')
+        
+        # Compute the bounds after back substituting the bounds to the input layer. 
+        new_delta_lb, new_delta_ub = self.concretize_bounds(delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias,
+                                                                    delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias,
+                                                                    delta_lb_layer=self.diff, 
+                                                                    delta_ub_layer=self.diff)
+        delta_lb = (new_delta_lb if delta_lb is None else (torch.max(delta_lb, new_delta_lb)))
+        delta_ub = (new_delta_ub if delta_ub is None else (torch.min(delta_ub, new_delta_ub)))
+
+        return delta_lb, delta_ub
 
     def run(self):
         delta_lbs = []
@@ -185,8 +256,9 @@ class DiffDeepPoly:
         if len(self.lb_input2) != len(self.linear_conv_layer_indices) or len(self.ub_input2) != len(self.linear_conv_layer_indices):
             raise ValueError("Input2 bounds do not match")
 
-        for layer_index in self.linear_conv_layer_indices:
-            curr_delta_lb, curr_delta_ub = self.back_substitution(layer_index=layer_index, delta_lbs=delta_lbs, delta_ubs=delta_ubs)
+        for linear_layer_index, layer_index in enumerate(self.linear_conv_layer_indices):
+            curr_delta_lb, curr_delta_ub = self.back_substitution(layer_index=layer_index, linear_layer_index=linear_layer_index,
+                                                                   delta_lbs=delta_lbs, delta_ubs=delta_ubs)
             delta_lbs.append(curr_delta_lb)
             delta_ubs.append(curr_delta_ub)
 

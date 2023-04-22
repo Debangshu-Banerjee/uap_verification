@@ -385,6 +385,33 @@ def get_sparsification_indices(f_lb, f_ub, final_layer_wt,
     return nonzero_count, zero_fetures_indices, nonzero_fetures_indices
 
 
+def compute_input_shapes(net, input_shape):
+    shapes = []
+    shapes.append(input_shape)
+    for idx, layer in enumerate(net):
+        if idx == 0 and layer.type is LayerType.Linear:
+            shapes.pop()
+            shapes.append(input_shape[0] * input_shape[1] * input_shape[2])
+        if layer.type is LayerType.Linear:
+            shapes.append(layer.weight.shape[0])
+        elif layer.type is LayerType.Conv2D:
+            weight = layer.weight
+            num_kernel = weight.shape[0]
+
+            k_h, k_w = layer.kernel_size
+            s_h, s_w = layer.stride
+            p_h, p_w = layer.padding
+
+            shape = shapes[-1]
+
+            input_h, input_w = shape[1:]
+
+            ### ref. https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html#torch.nn.Conv2d ###
+            output_h = int((input_h + 2 * p_h - k_h) / s_h + 1)
+            output_w = int((input_w + 2 * p_w - k_w) / s_w + 1)
+            shapes.append((num_kernel, output_h, output_w))
+
+    return shapes
 
 
 def log_memory_usage():
