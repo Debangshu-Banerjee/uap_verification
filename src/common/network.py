@@ -1,5 +1,4 @@
 from enum import Enum
-from copy import deepcopy
 
 class Network(list):
     def __init__(self, net_name=None, input_name=None, input_shape=None, torch_net=None):
@@ -12,8 +11,8 @@ class Network(list):
 
 class Layer:
     def __init__(self, weight=None, bias=None, type=None):
-        self.weight = deepcopy(weight)
-        self.bias = deepcopy(bias)
+        self.weight = weight
+        self.bias = bias
         self.type = type
 
 

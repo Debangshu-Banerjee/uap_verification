@@ -12,7 +12,7 @@ class DiffDeepPoly:
         elif self.input1.shape[0] == 3072:
             self.input_shape = (3, 32, 32)
         else:
-            raise ValueError(f'Unrecognised input shape {self.input1.shape}')
+            self.input_shape = (1, 1, 2)
         self.net = net
         self.lb_input1 = lb_input1
         self.ub_input1 = ub_input1
@@ -41,6 +41,7 @@ class DiffDeepPoly:
                     delta_ub_coef, delta_ub_bias, preconv_shape, postconv_shape,
                     stride, padding, groups=1, dilation=1):
         kernel_hw = conv_weight.shape[-2:]
+
         h_padding = (preconv_shape[1] + 2 * padding[0] - 1 - dilation[0] * (kernel_hw[0] - 1)) % stride[0]
         w_padding = (preconv_shape[2] + 2 * padding[1] - 1 - dilation[1] * (kernel_hw[1] - 1)) % stride[1]
         output_padding = (h_padding, w_padding)
@@ -49,8 +50,8 @@ class DiffDeepPoly:
         delta_lb_coef = delta_lb_coef.view((coef_shape[0], *postconv_shape))
         delta_ub_coef = delta_ub_coef.view((coef_shape[0], *postconv_shape))
 
-        delta_lb_bias = delta_lb_bias + (0 if conv_bias is None else (delta_lb_coef.sum((3, 4)) * conv_bias).sum(2))
-        delta_ub_bias = delta_ub_bias + (0 if conv_bias is None else (delta_ub_coef.sum((3, 4)) * conv_bias).sum(2))
+        delta_lb_bias = delta_lb_bias + (0 if conv_bias is None else (delta_lb_coef.sum((2, 3)) * conv_bias).sum(1))
+        delta_ub_bias = delta_ub_bias + (0 if conv_bias is None else (delta_ub_coef.sum((2, 3)) * conv_bias).sum(1))
 
         new_delta_lb_coef = F.conv_transpose2d(delta_lb_coef, conv_weight, None, stride, padding,
                                            output_padding, groups, dilation)
@@ -72,8 +73,8 @@ class DiffDeepPoly:
                            delta_lb_layer, delta_ub_layer):
         lb_neg_comp, lb_pos_comp = self.pos_neg_weight_decomposition(delta_lb_coef)
         ub_neg_comp, ub_pos_comp = self.pos_neg_weight_decomposition(delta_ub_coef)
-        lb = lb_neg_comp * delta_ub_layer + lb_pos_comp * delta_lb_layer + delta_lb_bias
-        ub = ub_neg_comp * delta_lb_layer + ub_pos_comp * delta_ub_layer + delta_ub_bias
+        lb = lb_neg_comp @ delta_ub_layer + lb_pos_comp @ delta_lb_layer + delta_lb_bias
+        ub = ub_neg_comp @ delta_lb_layer + ub_pos_comp @ delta_ub_layer + delta_ub_bias
         return lb, ub
 
 
@@ -84,16 +85,15 @@ class DiffDeepPoly:
         
         input1_active = (lb_input1_layer >= 0)
         input1_passive = (ub_input1_layer <= 0)
-        input1_unsettled = (lb_input1_layer < 0 & ub_input1_layer > 0)
+        input1_unsettled = ~(input1_active) & ~(input1_passive)
 
         input2_active = (lb_input2_layer >= 0)
         input2_passive = (ub_input2_layer <= 0)
-        input2_unsettled = (lb_input2_layer < 0 & ub_input2_layer > 0)
+        input2_unsettled = ~(input2_active) & ~(input2_passive)
 
         delta_active = (delta_lb_layer >= 0)
         delta_passive = (delta_ub_layer <= 0)
-        delta_unsettled = (delta_lb_layer < 0 & delta_ub_layer > 0)
-
+        delta_unsettled = ~(delta_active) & ~(delta_passive)
 
         lambda_lb = torch.zeros(lb_input1_layer.size(), device=self.device)
         lambda_ub = torch.zeros(lb_input1_layer.size(), device=self.device)
@@ -134,10 +134,10 @@ class DiffDeepPoly:
         mu_ub = torch.where(input1_active & input2_unsettled, torch.zeros(lb_input1_layer.size(), device=self.device), mu_ub)
 
         # case 8 (x.lb < 0 and x.ub > 0) and (y.lb >= 0)
-        lambda_lb = torch.where(input2_unsettled & input2_active, torch.ones(lb_input1_layer.size(), device=self.device), lambda_lb)
-        lambda_ub = torch.where(input2_unsettled & input2_active, torch.zeros(lb_input1_layer.size(), device=self.device), lambda_ub)
-        mu_lb = torch.where(input2_unsettled & input2_active, torch.zeros(lb_input1_layer.size(), device=self.device), mu_lb)
-        mu_ub = torch.where(input2_unsettled & input2_active, torch.max(delta_ub_layer, -lb_input2_layer), mu_ub)
+        lambda_lb = torch.where(input1_unsettled & input2_active, torch.ones(lb_input1_layer.size(), device=self.device), lambda_lb)
+        lambda_ub = torch.where(input1_unsettled & input2_active, torch.zeros(lb_input1_layer.size(), device=self.device), lambda_ub)
+        mu_lb = torch.where(input1_unsettled & input2_active, torch.zeros(lb_input1_layer.size(), device=self.device), mu_lb)
+        mu_ub = torch.where(input1_unsettled & input2_active, torch.max(delta_ub_layer, -lb_input2_layer), mu_ub)
 
         # case 9 (x.lb < 0 and x.ub > 0) and (y.lb < 0 and y.ub > 0) and (delta_lb >= 0)
         lambda_lb = torch.where(input1_unsettled & input2_unsettled & delta_active, torch.zeros(lb_input1_layer.size(), device=self.device), lambda_lb)
@@ -157,26 +157,28 @@ class DiffDeepPoly:
         temp_lambda_ub = delta_ub_layer / (delta_ub_layer - delta_lb_layer + 1e-15)
         lambda_lb = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, temp_lambda_lb, lambda_lb)
         lambda_ub = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, temp_lambda_ub, lambda_ub)
-        mu_lb = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, -temp_mu, mu_lb)
-        mu_ub = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, temp_mu, mu_ub)
+        mu_lb = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, temp_mu, mu_lb)
+        mu_ub = torch.where(input1_unsettled & input2_unsettled & delta_unsettled, -temp_mu, mu_ub)
 
         # Segregate the +ve and -ve components of the coefficients
         neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(delta_lb_coef)
         neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(delta_ub_coef)
 
         delta_lb_coef = pos_comp_lb * lambda_lb + neg_comp_lb * lambda_ub
-        delta_lb_bias = pos_comp_lb * mu_lb + neg_comp_lb * mu_ub
-        delta_ub_coef = pos_comp_ub * lambda_ub + neg_comp_ub * lambda_lb
-        delta_ub_bias = pos_comp_ub * mu_ub + neg_comp_ub * mu_lb
+        delta_lb_bias = pos_comp_lb @ mu_lb + neg_comp_lb @ mu_ub + delta_lb_bias
+        delta_ub_coef = pos_comp_ub * lambda_ub + neg_comp_ub * lambda_lb 
+        delta_ub_bias = pos_comp_ub @ mu_ub + neg_comp_ub @ mu_lb + delta_ub_bias
 
         return delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias
 
 
-    def get_layer_size(self, layer_index):
-        if self.net[layer_index].type is LayerType.Linear:
-            return self.shapes[layer_index + 1]
-        if self.net[layer_index].type is LayerType.Conv2D:
-            shape = self.shapes[layer_index+ 1]
+    def get_layer_size(self, linear_layer_index):
+        layer = self.net[self.linear_conv_layer_indices[linear_layer_index]]
+        if layer.type is LayerType.Linear:
+            shape = self.shapes[linear_layer_index + 1]
+            return shape
+        if layer.type is LayerType.Conv2D:
+            shape = self.shapes[linear_layer_index+ 1]
             return (shape[0] * shape[1] * shape[2])
         
 
@@ -191,7 +193,7 @@ class DiffDeepPoly:
         delta_lb_bias = None
         delta_ub_coef = None
         delta_ub_bias = None
-        for i in reversed(range(layer_index)):
+        for i in reversed(range(layer_index + 1)):
             # Concretize the bounds for the previous layers.
             if self.net[i].type in [LayerType.Linear, LayerType.Conv2D] and delta_lb_coef is not None:
                 new_delta_lb, new_delta_ub = self.concretize_bounds(delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias,
@@ -200,9 +202,9 @@ class DiffDeepPoly:
                                                                     delta_ub_layer=delta_ubs[linear_layer_index])
                 delta_lb = (new_delta_lb if delta_lb is None else (torch.max(delta_lb, new_delta_lb)))
                 delta_ub = (new_delta_ub if delta_ub is None else (torch.min(delta_ub, new_delta_ub)))
-            
+
             if delta_lb_coef is None:
-                layer_size = self.get_layer_size(layer_index=linear_layer_index)
+                layer_size = self.get_layer_size(linear_layer_index=linear_layer_index)
                 delta_lb_coef = torch.eye(n=layer_size, device=self.device)
                 delta_lb_bias = torch.zeros(layer_size, device=self.device)
                 delta_ub_coef = torch.eye(n=layer_size, device=self.device)
@@ -218,7 +220,7 @@ class DiffDeepPoly:
                 delta_lb_coef, delta_lb_bias, delta_ub_coef, delta_ub_bias = self.handle_conv(conv_weight=curr_layer.weight, conv_bias=None, 
                                         delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias, 
                                         delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias, 
-                                        preconv_shape=self.shapes[linear_layer_index-1], postconv_shape=self.shapes[linear_layer_index],
+                                        preconv_shape=self.shapes[linear_layer_index], postconv_shape=self.shapes[linear_layer_index + 1],
                                         stride=curr_layer.stride, padding=curr_layer.padding)
                 linear_layer_index -= 1
             elif curr_layer.type is LayerType.ReLU:
@@ -233,13 +235,14 @@ class DiffDeepPoly:
             else:
                 raise NotImplementedError(f'diff verifier for {curr_layer.type} is not implemented')
         
-        # Compute the bounds after back substituting the bounds to the input layer. 
+        # Compute the bounds after back substituting the bounds to the input layer.         
         new_delta_lb, new_delta_ub = self.concretize_bounds(delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias,
                                                                     delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias,
                                                                     delta_lb_layer=self.diff, 
                                                                     delta_ub_layer=self.diff)
         delta_lb = (new_delta_lb if delta_lb is None else (torch.max(delta_lb, new_delta_lb)))
         delta_ub = (new_delta_ub if delta_ub is None else (torch.min(delta_ub, new_delta_ub)))
+
 
         return delta_lb, delta_ub
 
