@@ -100,5 +100,7 @@ class DiffDeepPolyTest(TestCase):
         ub_input2 = [torch.tensor([5, 8], dtype=torch.float), torch.tensor([5, 8], dtype=torch.float)]
         diff_deep_poly_ver = DiffDeepPoly(input1, input2, network, lb_input1, ub_input1, lb_input2, ub_input2, device='cpu')
         delta_lbs, delta_ubs = diff_deep_poly_ver.run()
-        print("Delta lower bounds ", delta_lbs)
-        print("Delta upper bounds ", delta_ubs)      
+        assert(np.allclose(delta_lbs[0].numpy(), torch.tensor([-1, -2],  dtype=torch.float).numpy()))
+        assert(np.allclose(delta_ubs[0].numpy(), torch.tensor([-1, -2],  dtype=torch.float).numpy()))
+        assert(np.allclose(delta_lbs[1].numpy(), torch.tensor([-1, -2],  dtype=torch.float).numpy()))
+        assert(np.allclose(delta_ubs[1].numpy(), torch.tensor([2, 1],  dtype=torch.float).numpy()))         
