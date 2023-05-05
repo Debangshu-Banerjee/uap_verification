@@ -102,6 +102,9 @@ class UAPLPtransformer:
 
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
 
+    def create_relu_ub(self, x, lb, ub):
+        rlb, rub = np.max(0, lb), np.max(0, ub)
+        return (rub-rlb)/(ub-lb) * (x-lb) + rlb
 
     def create_relu_constraints(self, layer_idx):
         vs, ds = self.create_vars(layer_idx)
@@ -109,6 +112,7 @@ class UAPLPtransformer:
         for i in range(self.batch_size):
             self.gmdl.addConstr(vs[i] >= 0)
             self.gmdl.addConstr(vs[i] >= self.gurobi_variables[-1]['vs'][i])
+            self.gmdl.addConstr(vs[i] <= self.create_relu_ub(self.gurobi_variables[-1]['vs'][i], self.x_lbs[layer_idx-1][i], self.x_ubs[layer_idx-1][i]))
         
         for k in range(len(ds)): #this seems terrible and slow, ill speed it up
             for l in range(len(ds[k])):
@@ -133,6 +137,7 @@ class UAPLPtransformer:
                         else:
                             self.gmdl.addConstr(d[i][j] >= 0)
                             self.gmdl.addConstr(d[i][j] >= self.gurobi_variables[-1]['vs'][k] - self.gurobi_variables[-1]['vs'][r])
+                            self.gmdl.addConstr(d[i][j] <= self.create_relu_ub(self.gurobi_variables[-1]['vs'][k] - self.gurobi_variables[-1]['vs'][r], self.d_lbs[layer_idx-1][i][j], self.d_ubs[layer_idx-1][i][j])) #not sure
                             
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
         
