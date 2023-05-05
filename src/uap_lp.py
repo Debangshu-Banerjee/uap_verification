@@ -102,7 +102,7 @@ class UAPLPtransformer:
 
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
 
-    def create_relu_ub(self, x, lb, ub):
+    def create_relu_ub(self, x, lb, ub): #probably breaks on degenerate lb=ub case, should fix
         rlb, rub = np.max(0, lb), np.max(0, ub)
         return (rub-rlb)/(ub-lb) * (x-lb) + rlb
 
