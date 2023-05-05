@@ -5,16 +5,16 @@ from src.common.network import Network, LayerType
 import numpy as np
 
 class UAPLPtransformer:
-    def __init__(self, mdl, x1, x2, x1_l, x1_u, x2_l, x2_u, d_l, d_u):
+    def __init__(self, mdl, xs, init_r, x_lbs, x_ubs, d_lbs, d_ubs):
         self.mdl = mdl
-        self.x1 = x1
-        self.x2 = x2
-        self.x1_l = x1_l
-        self.x1_u = x1_u
-        self.x2_l = x2_l
-        self.x2_u = x2_u
-        self.d_l = d_l
-        self.d_u = d_u
+        self.xs = xs
+        self.batch_size = len(xs)
+        self.init_r = init_r
+        self.x_lbs = x_lbs
+        self.x_ubs = x_ubs
+        self.d_lbs = d_lbs
+        self.d_ubs = d_ubs
+        self.d_idx = [[i for i in range(len(d_lbs)) if d_lbs[i] is not None] for _ in range(len(d_lbs[0]))]
 
         self.gmdl = grb.Model()
         self.gurobi_variables = []
@@ -23,36 +23,52 @@ class UAPLPtransformer:
         self.gmdl.setParam('OutputFlag', False)
         self.create_constraints()
 
-    def optimize_lp(self, y1, y2):
-        bounds_y1 = []
-        for i in range(len(self.gurobi_variables[-1]['v1'])):
-            optimize_var = self.gurobi_variables[-1]['v1'][i]
-            self.model.reset()
-            if i != y1:
-                self.model.setObjective(optimize_var, grb.GRB.MAXIMIZE)
-            else:
-                self.model.setObjective(optimize_var, grb.GRB.MAXIMIZE)
-            self.model.optimize()
-            if self.model.status == 2:
-                bounds_y1.append(optimize_var.X)
-            else:
-                raise NotImplementedError
-        bounds_y2 = []
-        for i in range(len(self.gurobi_variables[-1]['v2'])):
-            optimize_var = self.gurobi_variables[-1]['v2'][i]
-            self.model.reset()
-            if i != y2:
-                self.model.setObjective(optimize_var, grb.GRB.MAXIMIZE)
-            else:
-                self.model.setObjective(optimize_var, grb.GRB.MAXIMIZE)
-            self.model.optimize()
-            if self.model.status == 2:
-                bounds_y2.append(optimize_var.X)
-            else:
-                raise NotImplementedError
-        return np.argmax(bounds_y1) == y1 and np.argmax(bounds_y2) == y2
+    def optimize_lp(self, constraint_matrix):
+        constraints = [constraint_matrix @ self.gurobi_variables[-1]['vs'][i] for i in range(self.batch_size)]
+        ts = [self.gmdl.addMVar(constraints[i].shape, vtype=grb.GRB.CONTINUOUS, name=f't{i}') for i in range(self.batch_size)]
+        t_mins = []
+        for idx, t in enumerate(ts):
+            self.gmdl.addConstr(t == constraints[idx])
+            t_mins.append(self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f't_min{idx}'))
+            self.gmdl.addGenConstrMin(t_mins[-1], t.tolist())
+        bs = [self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f'b{i}') for i in range(self.batch_size)]
+        
+        t_max = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f't_max')
+        self.gmdl.addGenConstrMax(t_max, t_mins)
+        self.model.reset()
+        self.gmdl.setObjective(t_max, grb.GRB.MINIMIZE)
+        self.model.optimize()
+        if self.model.status == 2:
+            return t_max.X
+        else:
+            return NotImplementedError
+    
+    def optimize_milp_percent(self, constraint_matrix):
+        constraints = [constraint_matrix @ self.gurobi_variables[-1]['vs'][i] for i in range(self.batch_size)]
+        ts = [self.gmdl.addMVar(constraints[i].shape, vtype=grb.GRB.CONTINUOUS, name=f't{i}') for i in range(self.batch_size)]
+        bs = []
+        for idx, t in enumerate(ts):
+            self.gmdl.addConstr(t == constraints[idx])
+            t_min = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f't_min{idx}')
+            self.gmdl.addGenConstrMin(t_min, t.tolist())
+            bs.append(self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{idx}'))
+            self.gmdl.addConstr(bs[-1] == (t_min >= 0))
+        p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f'p')
+        self.gmdl.addConstr(p == self.gmdl.quicksum(bs[i] for i in range(self.batch_size)) / self.batch_size)
+        self.model.reset()
+        self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
+        self.model.optimize()
+        if self.model.status == 2:
+            return p.X
+        else:
+            return NotImplementedError
+
+    def create_input_constraints(self):
+        vs = [self.gmdl.addMVar(self.xs[i].shape, lb = self.xs[i] - self.init_r, ub = self.xs[i] + self.init_r, vtype=grb.GRB.CONTINUOUS, name=f'input') for i in range(self.batch_size)]
+        self.gurobi_variables.append({'vs': vs, 'ds': None})
 
     def create_constraints(self):
+        self.create_input_constraints()
         layers = self.mdl
         for layer_idx, layer in enumerate(layers):
             layer_type = self.get_layer_type(layer)
@@ -69,54 +85,56 @@ class UAPLPtransformer:
                 raise TypeError(f"Unsupported Layer Type '{layer_type}'")
 
     def create_vars(self, layer_idx):
-        v1 = self.gmdl.addMVar(self.x1_l[layer_idx].shape, lb = self.x1_1[layer_idx], ub = self.x1_u[layer_idx], vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_x1')
-        v2 = self.gmdl.addMVar(self.x2_l[layer_idx].shape, lb = self.x2_1[layer_idx], ub = self.x2_u[layer_idx], vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_x2')
-        d = self.gmdl.addMVar(self.d_l[layer_idx].shape, lb = self.d_1[layer_idx], ub = self.d_u[layer_idx], vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d')
-        return v1, v2, d
+        vs = [self.gmdl.addMVar(self.x_lbs[layer_idx][i].shape, lb = self.x_lbs[layer_idx][i], ub = self.x_ubs[layer_idx][i], vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_x{i}') for i in range(self.batch_size)]
+        ds = [[self.gmdl.addMVar(self.d_lbs[layer_idx][i][j].shape, lb = self.d_lbs[layer_idx][i][j], ub = self.d_ubs[layer_idx][i][j], vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in self.d_idx[i]] for i in range(len(self.d_idx))]
+        return vs, ds
 
     def create_linear_constraints(self, layer, layer_idx):
         weight, bias = layer.weight, layer.bias
 
-        v1, v2, d = self.create_vars(layer_idx)
+        vs, ds = self.create_vars(layer_idx)
 
-        if layer_idx != 0:
-            self.gmdl.addConstr(v1 == weight @ self.gurobi_variables[-1]['v1'] + bias)
-            self.gmdl.addConstr(v2 == weight @ self.gurobi_variables[-1]['v2'] + bias)
-            self.gmdl.addConstr(d == weight @ (self.gurobi_variables[-1]['v1'] - self.gurobi_variables[-1]['v2']))
+        for v_idx, v in enumerate(vs):
+            self.gmdl.addConstr(v == weight @ self.gurobi_variables[-1]['vs'][v_idx] + bias)
+        for i in range(len(self.d_idx)):
+            for k, j in enumerate(self.d_idx[i]):
+                self.gmdl.addConstr(self.gurobi_variables[-1]['ds'][i][k] == weight @ (self.gurobi_variables[-1]['vs'][i] - self.gurobi_variables[-1]['vs'][j])) #is this right?
 
-        self.gurobi_variables.append({'v1': v1, 'v2': v2, 'd': d})
+        self.gurobi_variables.append({'vs': vs, 'ds': ds})
 
 
     def create_relu_constraints(self, layer_idx):
-        v1, v2, d = self.create_vars(layer_idx)
+        vs, ds = self.create_vars(layer_idx)
 
-        self.gmdl.addConstr(v1 >= 0)
-        self.gmdl.addConstr(v1 >= self.gurobi_variables[-1]['v1'])
-        self.gmdl.addConstr(v2 >= 0)
-        self.gmdl.addConstr(v2 >= self.gurobi_variables[-1]['v2'])
+        for i in range(self.batch_size):
+            self.gmdl.addConstr(vs[i] >= 0)
+            self.gmdl.addConstr(vs[i] >= self.gurobi_variables[-1]['vs'][i])
         
-        d = d.tolist()
-        for i in range(len(d)):
-            for j in range(len(d[0])):
-                if self.x1_u[layer_idx][i][j] <= 0 and self.x2_u[layer_idx][i][j] <= 0:
-                    self.gmdl.addConstr(d[i][j] == 0)
-                #elif self.x1_u[layer_idx][i][j] <= 0 and self.x2_l[layer_idx][i][j] >= 0:
-                #    self.gmdl.addConstr(d[i][j] == -self.gurobi_variables[-1]['v2'])
-                #elif self.x1_l[layer_idx][i][j] >= 0 and self.x2_u[layer_idx][i][j] <= 0:
-                #    self.gmdl.addConstr(d[i][j] == self.gurobi_variables[-1]['v1'])
-                elif self.x1_l[layer_idx][i][j] >= 0 and self.x2_l[layer_idx][i][j] >= 0:
-                    self.gmdl.addConstr(d[i][j] == self.gurobi_variables[-1]['v1'] - self.gurobi_variables[-1]['v2'])
-                elif self.x1_u[layer_idx][i][j] <= 0:
-                    self.gmdl.addConstr(d[i][j] == -self.gurobi_variables[-1]['v2'])
-                #elif self.x1_l[layer_idx][i][j] >= 0:
-                elif self.x2_u[layer_idx][i][j] <= 0:
-                    self.gmdl.addConstr(d[i][j] == self.gurobi_variables[-1]['v1'])
-                #elif self.x2_l[layer_idx][i][j] >= 0:
-                else:
-                    self.gmdl.addConstr(d[i][j] >= 0)
-                    self.gmdl.addConstr(d[i][j] >= self.gurobi_variables[-1]['v1'] - self.gurobi_variables[-1]['v2'])
-                    
-        self.gurobi_variables.append({'v1': v1, 'v2': v2, 'd': d})
+        for k in range(len(ds)): #this seems terrible and slow, ill speed it up
+            for l in range(len(ds[k])):
+                d = ds[k][l].tolist()
+                r = self.d_idx[k][l]
+                for i in range(len(d)):
+                    for j in range(len(d[0])): #check constraints
+                        if self.x_ubs[layer_idx][k][i][j] <= 0 and self.x_ubs[layer_idx][r][i][j] <= 0:
+                            self.gmdl.addConstr(d[i][j] == 0)
+                        #elif self.x1_u[layer_idx][i][j] <= 0 and self.x2_l[layer_idx][i][j] >= 0:
+                        #    self.gmdl.addConstr(d[i][j] == -self.gurobi_variables[-1]['v2'])
+                        #elif self.x1_l[layer_idx][i][j] >= 0 and self.x2_u[layer_idx][i][j] <= 0:
+                        #    self.gmdl.addConstr(d[i][j] == self.gurobi_variables[-1]['v1'])
+                        elif self.x_lbs[layer_idx][k][i][j] >= 0 and self.x_lbs[layer_idx][r][i][j] >= 0:
+                            self.gmdl.addConstr(d[i][j] == self.gurobi_variables[-1]['vs'][k] - self.gurobi_variables[-1]['vs']['r'])
+                        elif self.x_ubs[layer_idx][k][i][j] <= 0:
+                            self.gmdl.addConstr(d[i][j] == -self.gurobi_variables[-1]['vs'][r])
+                        #elif self.x1_l[layer_idx][i][j] >= 0:
+                        elif self.x_ubsu[layer_idx][r][i][j] <= 0:
+                            self.gmdl.addConstr(d[i][j] == self.gurobi_variables[-1]['vs'][k])
+                        #elif self.x2_l[layer_idx][i][j] >= 0:
+                        else:
+                            self.gmdl.addConstr(d[i][j] >= 0)
+                            self.gmdl.addConstr(d[i][j] >= self.gurobi_variables[-1]['vs'][k] - self.gurobi_variables[-1]['vs'][r])
+                            
+        self.gurobi_variables.append({'vs': vs, 'ds': ds})
         
     def create_conv2d_constraints(self, layer, layer_idx):
         raise NotImplementedError
