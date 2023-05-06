@@ -15,11 +15,10 @@ class BaselineAnalyzerBackend:
     # Metadata.
     def run(self):
         baseline_results = []
-        for prop in enumerate(self.props):
+        for prop in self.props:
             start_time = time.time()
-            print(prop)
             assert prop.get_input_clause_count() == 1
-            transformer = domain_transformer(net=self.net, prop=prop.get_input_clause(0), domain=self.args.baseline_domain)
+            transformer = domain_transformer(net=self.net, prop=prop.get_input_clause(0), domain=self.args.individual_prop_domain)
             baseline_res = transformer.populate_baseline_verifier_result()
             time_diff = time.time() - start_time
             baseline_res.time = time_diff

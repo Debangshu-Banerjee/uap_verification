@@ -69,4 +69,4 @@ def UapVerificationBackend(props, uap_verification_args):
         # run the uap verification
         res = uap_analyzer.run()
         uap_result_list.add_results(res)
-    uap_result_list.analyze(uap_verification_args)
+    # uap_result_list.analyze(uap_verification_args)

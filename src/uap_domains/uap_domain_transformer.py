@@ -10,7 +10,7 @@ def get_uap_domain_transformer(domain, net, props, args, baseline_results):
     elif domain is Domain.UAP_BASIC_LP:
         transformer = UapBasicLP(net=net, props=props, args=args, baseline_results=baseline_results)
     elif domain is Domain.UAP_DIFF:
-        transformer = UapBasicLP(net=net, props=props, args=args, baseline_results=baseline_results)
+        transformer = UapDiff(net=net, props=props, args=args, baseline_results=baseline_results)
     else:
          raise ValueError(f"Unrecognized UAP domain {domain}") 
     return transformer

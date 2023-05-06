@@ -45,6 +45,8 @@ class ZonoTransformer:
 
         self.centers = []
         self.cofs = []
+        self.linear_centers = []
+        self.linear_coefs = []
 
         self.set_zono(center, cof)
 
@@ -52,7 +54,7 @@ class ZonoTransformer:
     
     def populate_baseline_verifier_result(self):
         final_lb = self.compute_lb()
-        layer_lbs, layer_ubs = self.get_all_bounds()
+        layer_lbs, layer_ubs = self.get_all_linear_bounds()
         coef, center = self.final_coef_center()
         return BaselineVerifierRes(input=self.prop.input, layer_lbs=layer_lbs, layer_ubs=layer_ubs, final_lb=final_lb,
                                    zono_center=center, zono_coef=coef)
@@ -130,6 +132,29 @@ class ZonoTransformer:
     def set_zono(self, center, cof):
         self.centers.append(center)
         self.cofs.append(cof)
+
+    def set_linear_zono(self, center, coef):
+        self.linear_centers.append(center)
+        self.linear_coefs.append(coef)
+
+    def get_all_linear_bounds(self):
+        lbs = []
+        ubs = []
+
+        for i in range(len(self.linear_centers)):
+            center = self.linear_centers[i]
+            coef = self.linear_coefs[i]
+
+            coef_abs = torch.sum(torch.abs(coef), dim=0)
+
+            lb = center - coef_abs
+            ub = center + coef_abs
+
+            lbs.append(lb)
+            ubs.append(ub)
+
+        return lbs, ubs
+
 
     def get_all_bounds(self):
         lbs = []
@@ -298,6 +323,7 @@ class ZonoTransformer:
         cof = prev_cof @ weight
 
         self.set_zono(center, cof)
+        self.set_linear_zono(center=center, coef=cof)
         return self
 
     def handle_conv2d(self, layer):
@@ -336,6 +362,7 @@ class ZonoTransformer:
         cof = F.conv2d(prev_cof, weight, padding=layer.padding, stride=layer.stride).reshape(num_eps, -1)
 
         self.set_zono(center, cof)
+        self.set_linear_zono(center=center, coef=cof)
 
         return self
 

@@ -258,6 +258,9 @@ class DiffDeepPoly:
             if layer.type in [LayerType.Linear, LayerType.Conv2D]:
                 self.linear_conv_layer_indices.append(ind)
         
+        print("Lb input1 ", len(self.lb_input1))
+        print("ub input1 ", len(self.ub_input1))
+        print("Linear layer indices ", len(self.linear_conv_layer_indices))                
         if len(self.lb_input1) != len(self.linear_conv_layer_indices) or len(self.ub_input1) != len(self.linear_conv_layer_indices):
             raise ValueError("Input1 bounds do not match")
         if len(self.lb_input2) != len(self.linear_conv_layer_indices) or len(self.ub_input2) != len(self.linear_conv_layer_indices):

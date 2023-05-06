@@ -43,6 +43,7 @@ class UAPAnalyzerBackendWrapper:
     def run_uap_verification(self, domain, individual_verification_results):
         uap_verifier = get_uap_domain_transformer(domain=domain, net=self.net, props=self.props, 
                                                            args=self.args, baseline_results=individual_verification_results)
+        print("Uap verifier Type", type(uap_verifier))
         return uap_verifier.run()
 
 
