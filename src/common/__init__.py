@@ -19,7 +19,9 @@ class Domain(Enum):
     LIRPA_CROWN_IBP = 7
     LIRPA_CROWN_OPT = 8
     LIRPA_CROWN_FORWARD = 9
-    DEEPZ_UAP = 10
+    UAP_BASIC = 10
+    UAP_BASIC_LP = 11
+    UAP_DIFF = 12
 
 
 # Used for status of the complete verifier

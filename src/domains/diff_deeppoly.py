@@ -11,8 +11,11 @@ class DiffDeepPoly:
             self.input_shape = (1, 28, 28)
         elif self.input1.shape[0] == 3072:
             self.input_shape = (3, 32, 32)
-        else:
+        elif self.input1.shape[0] == 2:
+            # For unitest only
             self.input_shape = (1, 1, 2)
+        else:
+            raise ValueError(f"Unrecognised input shape {self.input_shape}")
         self.net = net
         self.lb_input1 = lb_input1
         self.ub_input1 = ub_input1

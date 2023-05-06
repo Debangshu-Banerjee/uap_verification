@@ -15,6 +15,7 @@ class InputSpecType(Enum):
     PATCH = 2
     GLOBAL = 3
     UAP = 4
+    UAP_TARGETED = 5
 
 def get_mean_std(dataset):
     if dataset == Dataset.MNIST:

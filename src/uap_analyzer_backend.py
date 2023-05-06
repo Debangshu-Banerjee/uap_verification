@@ -3,6 +3,8 @@ import src.util as util
 from src.uap_results import *
 from src.common import Status
 from src.domains.domain_transformer import domain_transformer
+from src.baseline_uap_verifier import BaselineAnalyzerBackend
+from src.uap_domains.uap_domain_transformer import get_uap_domain_transformer
 import time
 
 
@@ -10,133 +12,62 @@ class UAPAnalyzerBackendWrapper:
     def __init__(self, props, args) -> None:
         self.props = props
         self.args = args
-        self.net = util.get_net(self.args.net, self.args.dataset)
-        self.prop_coefs = []
-        self.prop_centers = []
-    
+        self.net = util.get_net(self.args.net, self.args.dataset)    
 
     def get_radius(self):
-        radius_l = self.args.radius_l
-        radius_r = self.args.radius_r
-        opt_baseline_radius = self.get_opt_radius(radius_l=radius_l, radius_r=radius_r, use_uap_verifier=False)
-        opt_uap_radius = self.get_opt_radius(radius_l=radius_l, radius_r=radius_r, use_uap_verifier=True)
-        print("Baseline radius", opt_baseline_radius)
-        print("UAP radius", opt_uap_radius)
-        print("Improvement", (opt_uap_radius - opt_baseline_radius) / opt_baseline_radius * 100)
-        return opt_baseline_radius, opt_uap_radius
+        pass
 
     def update_props(self, eps):
-        for prop in self.props:
-            prop.update_bounds(eps)
+        pass
 
     def get_opt_radius(self, radius_l, radius_r, use_uap_verifier, tolerence_lim=1e-7):
-        l = radius_l
-        r = radius_r
-        optimum_radius = 0.0
-        while (l < r) and (r - l) > tolerence_lim:
-            mid = (l + r) / 2.0
-            self.update_props(mid)
-            verification_res = self.verify(use_uap_verifier=use_uap_verifier)
-            if verification_res is True:
-                l = mid
-                optimum_radius = max(optimum_radius, mid)
-            else:
-                r = mid
-        return optimum_radius
+        pass
     
 
     def verify(self, use_uap_verifier=False):
-        baseline_verfier = UAPBaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
+        baseline_verfier = BaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
         baseline_result = baseline_verfier.run()
-        if baseline_result.status is Status.VERIFIED:
-            return True
-        else:
-            print("Baseline lb", baseline_result.global_lb)
-            if use_uap_verifier is False:
-                return False
-            coefs, centers =  baseline_verfier.get_centers_coefs()
-            UAP_result = UAPAnalyzerBackend(props=self.props, net=self.net, args=self.args, coefs=coefs, centers=centers).run()
-            if UAP_result.status is Status.VERIFIED:
-                return True
-            else:
-                return False
-
-
+        return None
     
     def run(self) -> UAPResult:
-        baseline_verfier = UAPBaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
-        baseline_result = baseline_verfier.run()
-        if baseline_result.status is Status.VERIFIED:
-            UAP_result = baseline_result
-        else:
-            coefs, centers =  baseline_verfier.get_centers_coefs()
-            UAP_result = UAPAnalyzerBackend(props=self.props, net=self.net, args=self.args, coefs=coefs, centers=centers).run()
-        return UAPResult(UAP_res=UAP_result, baseline_res=baseline_result)
+        # Baseline results correspond to running each property individually.
+        baseline_verfier = BaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
+        individual_verification_results = baseline_verfier.run()
+        baseline_res = self.run_uap_verification(domain=self.args.baseline_domain, 
+                                                 individual_verification_results=individual_verification_results)
+        uap_algorithm_res = self.run_uap_verification(domain=self.args.domain, 
+                                                 individual_verification_results=individual_verification_results)
+        return UAPResult(baseline_res=baseline_res, UAP_res=uap_algorithm_res)
 
 
-class UAPAnalyzerBackend:
-    def __init__(self, props, net, args, coefs=None, centers=None):
-        self.props = props
-        self.net = net 
-        self.args = args
-        self.coefs = coefs
-        self.centers = centers
+    def run_uap_verification(self, domain, individual_verification_results):
+        uap_verifier = get_uap_domain_transformer(domain=domain, net=self.net, props=self.props, 
+                                                           args=self.args, baseline_results=individual_verification_results)
+        return uap_verifier.run()
 
-    def run(self) -> UAPSingleRes:
-        start_time = time.time()
-        problem_status = Status.UNKNOWN
-        if self.coefs is None or self.centers is None:
-            raise ValueError("Coefs and centers must be both not null") 
-        with torch.no_grad():
-            transformer = domain_transformer(net=self.net, prop=self.props[0].get_input_clause(0), 
-                                         domain=self.args.domain)
-            transformer.set_coefs_centers(coefs=self.coefs, centers=self.centers)
-            lb = transformer.compute_lb()
-        print("UAP verifier lower bound", lb)
-        if lb >= 0:
-            problem_status = Status.VERIFIED
-        time_taken = time.time() - start_time
-        result = UAPSingleRes(domain=self.args.domain, 
-                                input_per_prop=self.args.count_per_prop, status=problem_status, 
-                                global_lb=lb, time_taken=time_taken)
-        return result
 
-class UAPBaselineAnalyzerBackend:
-    def __init__(self, props, net, args):
-        self.props = props
-        self.net = net 
-        self.args = args
-        self.centers = []
-        self.coefs = []
+# class UAPAnalyzerBackend:
+#     def __init__(self, props, net, args, baseline_results):
+#         self.props = props
+#         self.net = net 
+#         self.args = args
+#         self.baseline_results = baseline_results
 
-    def get_centers_coefs(self):
-        return self.coefs, self.centers
-
-    def run(self) -> UAPSingleRes:
-        start_time = time.time()
-        baseline_status = Status.UNKNOWN
-        global_lb = None
-        print("\nLength ", len(self.props))
-        for i, prop in enumerate(self.props):
-            assert prop.get_input_clause_count() == 1
-            transformer = domain_transformer(net=self.net, prop=prop.get_input_clause(0), domain=self.args.baseline_domain)
-            lb = transformer.compute_lb()
-            print(f'Full lower bound {(i+1)}', lb)
-            if global_lb is None:
-                global_lb = lb
-            else:
-                for i in range(global_lb.shape[0]):
-                    global_lb[i] = max(lb[i], global_lb[i])
-            if torch.min(global_lb) >= 0:
-                baseline_status = Status.VERIFIED
-            print(f'Full global lower bound {(i+1)}', global_lb)
-            if hasattr(transformer, 'final_coef_center'):
-                coef, center = transformer.final_coef_center()
-                self.centers.append(center)
-                self.coefs.append(coef)
-        
-        time_taken = time.time() - start_time
-        baseline_result = UAPSingleRes(domain=self.args.baseline_domain, 
-                                       input_per_prop=self.args.count_per_prop, status=baseline_status, 
-                                       global_lb=global_lb, time_taken=time_taken)
-        return baseline_result
+#     def run(self) -> UAPSingleRes:
+#         start_time = time.time()
+#         problem_status = Status.UNKNOWN
+#         if self.coefs is None or self.centers is None:
+#             raise ValueError("Coefs and centers must be both not null") 
+#         with torch.no_grad():
+#             transformer = domain_transformer(net=self.net, prop=self.props[0].get_input_clause(0), 
+#                                          domain=self.args.domain)
+#             transformer.set_coefs_centers(coefs=self.coefs, centers=self.centers)
+#             lb = transformer.compute_lb()
+#         print("UAP verifier lower bound", lb)
+#         if lb >= 0:
+#             problem_status = Status.VERIFIED
+#         time_taken = time.time() - start_time
+#         result = UAPSingleRes(domain=self.args.domain, 
+#                                 input_per_prop=self.args.count_per_prop, status=problem_status, 
+#                                 global_lb=lb, time_taken=time_taken)
+#         return result

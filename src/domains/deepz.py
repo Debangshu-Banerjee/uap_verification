@@ -1,5 +1,6 @@
 import torch
 from torch.nn import functional as F
+from src.baseline_uap_verifier_res import BaselineVerifierRes
 from src.sparsification_util import get_sparsification_indices, prune_last_layer
 from copy import deepcopy
 
@@ -46,6 +47,16 @@ class ZonoTransformer:
         self.cofs = []
 
         self.set_zono(center, cof)
+
+
+    
+    def populate_baseline_verifier_result(self):
+        final_lb = self.compute_lb()
+        layer_lbs, layer_ubs = self.get_all_bounds()
+        coef, center = self.final_coef_center()
+        return BaselineVerifierRes(input=self.prop.input, layer_lbs=layer_lbs, layer_ubs=layer_ubs, final_lb=final_lb,
+                                   zono_center=center, zono_coef=coef)
+
 
     def get_noise_indices(self):
         num_eps = 1e-7
@@ -137,6 +148,8 @@ class ZonoTransformer:
             ubs.append(ub)
 
         return lbs, ubs
+    
+
 
     def get_layer_bound(self, index):
         lbs, ubs = self.get_all_bounds()

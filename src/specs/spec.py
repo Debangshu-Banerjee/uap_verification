@@ -264,11 +264,16 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_
             specs_per_patch = pos_patch_count
             # labels = labels.unsqueeze(1).repeat(1, pos_patch_count).flatten()
         elif spec_type == InputSpecType.UAP:
+            testloader = prepare_data(dataset, batch_size=count)
+            inputs, labels = next(iter(testloader))
+            # For untargeted uap we reuse the linf specs.
+            props = get_linf_spec(inputs, labels, eps, dataset)
+        elif spec_type == InputSpecType.UAP_TARGETED:
             testloader = prepare_data(dataset, batch_size=2*count)
             inputs, labels = next(iter(testloader))
             inputs, labels = process_input_for_sink_label(inputs=inputs, labels=labels, 
                                                           sink_label=sink_label, target_count=count)
-            props = get_UAP_spec(inputs, eps, dataset, sink_label=torch.tensor(sink_label))
+            props = get_targeted_UAP_spec(inputs, eps, dataset, sink_label=torch.tensor(sink_label))
         return props, inputs
     elif dataset == Dataset.ACAS:
         return get_acas_props(count), None
@@ -285,6 +290,9 @@ def get_acas_props(count):
     return props
 
 
+
+# Get the specification for local linf robusteness.
+# Untargeted uap are exactly same for local linf specs.
 def get_linf_spec(inputs, labels, eps, dataset):
     properties = []
 
@@ -308,7 +316,9 @@ def get_linf_spec(inputs, labels, eps, dataset):
 
     return properties
 
-def get_UAP_spec(inputs, eps, dataset, sink_label):
+
+
+def get_targeted_UAP_spec(inputs, eps, dataset, sink_label):
     properties = []
 
     for i in range(len(inputs)):

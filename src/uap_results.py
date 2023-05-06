@@ -1,12 +1,13 @@
 from src.common import Status
 
 class UAPSingleRes:
-    def __init__(self, domain, input_per_prop, status, global_lb, time_taken):
+    def __init__(self, domain, input_per_prop, status, global_lb, time_taken, verified_proportion):
         self.domain = domain
         self.status = status
         self.input_per_prop = input_per_prop
         self.global_lb = global_lb
         self.time_taken = time_taken
+        self.verified_proportion = verified_proportion
 
     def print(self):
         print("Domain ", self.domain)
@@ -14,6 +15,7 @@ class UAPSingleRes:
         print("Global lb ", self.global_lb)
         print("Status ", self.status)
         print("Input per prop ", self.input_per_prop)
+        print("Verified proportion", self.verified_proportion)
 
 class UAPResult:
     def __init__(self, UAP_res, baseline_res):

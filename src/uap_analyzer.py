@@ -12,8 +12,11 @@ class UAPMode(Enum):
 
 
 class UapAnalysisArgs:
-    def __init__(self, domain, baseline_domain, dataset='mnist', sink_label=None, spec_type=InputSpecType.UAP, count=None, count_per_prop=2, 
-                 eps=0.01, net='', timeout=30, output_dir='', radius_l=0.1, radius_r=0.3, uap_mode=UAPMode.RADIUS) -> None:
+    def __init__(self, individual_prop_domain, domain, baseline_domain, dataset='mnist', sink_label=None, 
+                 spec_type=InputSpecType.UAP, count=None, count_per_prop=2, 
+                 eps=0.01, net='', timeout=30, output_dir='', radius_l=0.1, 
+                 radius_r=0.3, uap_mode=UAPMode.RADIUS, cutoff_percentage = 0.5) -> None:
+        self.individual_prop_domain = individual_prop_domain
         self.domain = domain
         self.baseline_domain = baseline_domain
         self.spec_type = spec_type
@@ -29,12 +32,14 @@ class UapAnalysisArgs:
         self.radius_l = radius_l
         self.radius_r = radius_r
         self.uap_mode = uap_mode
+        self.cutoff_percentage = cutoff_percentage
 
 
 def UapVerification(uap_verification_args: UapAnalysisArgs):
     total_local_prop_count = uap_verification_args.count * uap_verification_args.count_per_prop
-    props, inputs = specs.get_specs(uap_verification_args.dataset, spec_type=uap_verification_args.spec_type, count=total_local_prop_count,
-                                eps=uap_verification_args.eps, sink_label=uap_verification_args.sink_label)
+    props, _ = specs.get_specs(uap_verification_args.dataset, spec_type=uap_verification_args.spec_type,
+                                    count=total_local_prop_count, eps=uap_verification_args.eps, 
+                                    sink_label=uap_verification_args.sink_label)
     if uap_verification_args.uap_mode is UAPMode.RADIUS:
         UapVerifiedRadiusBackend(props=props, uap_verification_args=uap_verification_args)
     elif uap_verification_args.uap_mode is UAPMode.VERIFICATION:
@@ -51,7 +56,8 @@ def UapVerifiedRadiusBackend(props, uap_verification_args):
         props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop]
         uap_analyzer = UAPAnalyzerBackendWrapper(props=props_to_analyze, args=uap_verification_args)
         # run the uap verification
-        baseline_radius, uap_radius = uap_analyzer.get_radius()
+        # Update this once it is implemented.
+        # baseline_radius, uap_radius = uap_analyzer.get_radius()
 
 def UapVerificationBackend(props, uap_verification_args):
     uap_prop_count = uap_verification_args.count

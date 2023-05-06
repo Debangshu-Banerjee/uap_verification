@@ -325,8 +325,6 @@ def get_domain_builder(domain):
         return BoxTransformer
     if domain == Domain.LP:
         return LPTransformer
-    if domain == Domain.DEEPZ_UAP:
-        return ZonoUAPTransformer
     raise ValueError("Unexpected domain!")
 
 
