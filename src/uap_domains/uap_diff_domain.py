@@ -47,7 +47,7 @@ class UapDiff:
         for prop in self.props:
             self.constr_matrices.append(prop.get_input_clause(0).output_constr_mat())
 
-    def run(self) -> UAPSingleRes:
+    def run(self, proportion=False) -> UAPSingleRes:
         start_time = time.time()
         self.populate_lbs_and_ubs()        
         self.compute_difference_dict()
@@ -59,12 +59,21 @@ class UapDiff:
                                               d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices)
         # Formulate the Lp problem.
         uap_lp_transformer.create_lp()
-        verified_percentages = uap_lp_transformer.optimize_milp_percent()
-        print("Diff Verified percentages", verified_percentages)
-        time_taken = time.time() - start_time
+        verified_percentages = None
+        global_lb = None
         verified_status = Status.UNKNOWN
-        if verified_percentages >= self.args.cutoff_percentage:
-            verified_status = Status.VERIFIED        
+        if proportion == False:
+            global_lb = uap_lp_transformer.optimize_lp()
+            print("Diff global lb", global_lb)
+            if global_lb >= 0.0:
+                verified_status = Status.VERIFIED            
+        else:
+            verified_percentages = uap_lp_transformer.optimize_milp_percent()
+            print("Diff Verified percentages", verified_percentages)
+            if verified_percentages >= self.args.cutoff_percentage:
+                verified_status = Status.VERIFIED
+
+        time_taken = time.time() - start_time
         return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
                     status=verified_status, global_lb=None, time_taken=time_taken, 
                     verified_proportion=verified_percentages)

@@ -299,8 +299,8 @@ def get_linf_spec(inputs, labels, eps, dataset):
     for i in range(len(inputs)):
         image = inputs[i]
 
-        ilb = torch.clip(image - eps, min=0., max=1.)
-        iub = torch.clip(image + eps, min=0., max=1.)
+        ilb = image - eps
+        iub = image + eps
 
         mean, std = get_mean_std(dataset)
 
@@ -324,8 +324,8 @@ def get_targeted_UAP_spec(inputs, eps, dataset, sink_label):
     for i in range(len(inputs)):
         image = inputs[i]
 
-        ilb = torch.clip(image - eps, min=0., max=1.)
-        iub = torch.clip(image + eps, min=0., max=1.)
+        ilb = image - eps
+        iub = image + eps
 
         mean, std = get_mean_std(dataset)
 
