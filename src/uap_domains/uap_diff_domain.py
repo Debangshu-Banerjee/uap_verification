@@ -1,6 +1,9 @@
 import torch
 from src.uap_results import UAPSingleRes
 from src.domains.diff_deeppoly import DiffDeepPoly
+from src.uap_lp_new import UAPLPtransformer
+import time
+from src.common import Status
 
 class UapDiff:
     def __init__(self, net, props, args, baseline_results) -> None:
@@ -11,6 +14,10 @@ class UapDiff:
         self.difference_lbs_dict = {}
         self.difference_ubs_dict = {}
         self.input_list = []
+        self.eps = args.eps
+        self.input_lbs = []
+        self.input_ubs = []
+        self.constr_matrices = []
 
     def compute_difference_dict(self):
         for i in range(len(self.baseline_results)):
@@ -31,9 +38,33 @@ class UapDiff:
                 self.difference_ubs_dict[(i, j)] = delta_ubs
             self.input_list.append(self.baseline_results[i].input)        
 
+    def populate_lbs_and_ubs(self):
+        for i in range(len(self.baseline_results)):
+            self.input_lbs.append(self.baseline_results[i].layer_lbs)
+            self.input_ubs.append(self.baseline_results[i].layer_ubs)
+
+    def populate_matrices(self):
+        for prop in self.props:
+            self.constr_matrices.append(prop.get_input_clause(0).output_constr_mat())
+
     def run(self) -> UAPSingleRes:
-        print("Started differential verification")
+        start_time = time.time()
+        self.populate_lbs_and_ubs()        
         self.compute_difference_dict()
-        print("Differential verification completed")
+        self.populate_matrices()
         # Call the lp formulation with the differential lp code.
-        return None
+        uap_lp_transformer = UAPLPtransformer(mdl=self.net, xs=self.input_list, 
+                                              eps=self.eps, x_lbs=self.input_lbs,
+                                              x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
+                                              d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices)
+        # Formulate the Lp problem.
+        uap_lp_transformer.create_lp()
+        verified_percentages = uap_lp_transformer.optimize_milp_percent()
+        print("Diff Verified percentages", verified_percentages)
+        time_taken = time.time() - start_time
+        verified_status = Status.UNKNOWN
+        if verified_percentages >= self.args.cutoff_percentage:
+            verified_status = Status.VERIFIED        
+        return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
+                    status=verified_status, global_lb=None, time_taken=time_taken, 
+                    verified_proportion=verified_percentages)

@@ -23,6 +23,9 @@ class Property:
         self.out_constr = out_constr
         self.dataset = dataset
 
+    def update_input(self, eps):
+        self.input_props[0].update_input(eps=eps)
+
     def update_bounds(self, eps):
         if self.inp_type not in [InputSpecType.UAP, InputSpecType.LINF]:
             raise ValueError("Can not update the specs other than uap.")

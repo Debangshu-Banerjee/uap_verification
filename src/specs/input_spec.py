@@ -46,6 +46,12 @@ class InputProperty(object):
             self.input = input.flatten()
         else:
             self.input = None
+
+    def update_input(self, eps):
+        self.input += eps 
+        self.input_lb += eps
+        self.input_ub += eps
+
     
     def update_bounds(self, eps):
         ilb = torch.clip(self.input - eps, min=0., max=1.)

@@ -5,6 +5,7 @@ from src.specs.input_spec import InputSpecType
 from src.uap_analyzer_backend import UAPAnalyzerBackendWrapper
 from src.uap_results import UAPResultList
 from enum import Enum
+from copy import deepcopy
 
 class UAPMode(Enum):
     RADIUS = 1
@@ -64,7 +65,10 @@ def UapVerificationBackend(props, uap_verification_args):
     input_per_prop = uap_verification_args.count_per_prop
     uap_result_list = UAPResultList()
     for i in range(uap_prop_count):
-        props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop]
+        props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop] 
+        # new_prop = deepcopy(props[0])
+        # new_prop.update_input(eps=0.2)       
+        # props_to_analyze = [props[0], new_prop]
         uap_analyzer = UAPAnalyzerBackendWrapper(props=props_to_analyze, args=uap_verification_args)
         # run the uap verification
         res = uap_analyzer.run()

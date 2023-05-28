@@ -46,7 +46,9 @@ def parse_onnx_layers(net):
     model_name_to_val_dict = {init_vals.name: torch.tensor(numpy_helper.to_array(init_vals)) for init_vals in
                               net.graph.initializer}
 
+    final_relu = False
     for cur_layer in range(num_layers):
+        final_relu = False
         node = net.graph.node[cur_layer]
         operation = node.op_type
         nd_inps = node.input
@@ -75,8 +77,13 @@ def parse_onnx_layers(net):
             layers.append(layer)
 
         elif operation == 'Relu':
+            final_relu = True
             layers.append(Layer(type=LayerType.ReLU))
-
+    
+    # The final most layer is relu and no linear layer after that
+    # remove the linear layer (Hack find better solutions).
+    if final_relu is True:
+        layers.pop()
     return layers
 
 

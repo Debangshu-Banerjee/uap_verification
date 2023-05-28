@@ -47,6 +47,12 @@ class ZonoTransformer:
         self.cofs = []
         self.linear_centers = []
         self.linear_coefs = []
+        self.log_domain_filename = './debug_logs/deepz_debug_log.txt'
+
+        # In this case we don't multiply the constr mat with
+        # the final layer weight matrix
+        self.final_layer_without_constr_center = None
+        self.final_layer_without_constr_coef = None
 
         self.set_zono(center, cof)
 
@@ -54,7 +60,9 @@ class ZonoTransformer:
     
     def populate_baseline_verifier_result(self):
         final_lb = self.compute_lb()
-        layer_lbs, layer_ubs = self.get_all_linear_bounds()
+        layer_lbs, layer_ubs = self.get_all_linear_bounds_wt_constraints()
+        layer_lbs.append(self.ilb)
+        layer_ubs.append(self.iub)
         coef, center = self.final_coef_center()
         return BaselineVerifierRes(input=self.prop.input, layer_lbs=layer_lbs, layer_ubs=layer_ubs, final_lb=final_lb,
                                    zono_center=center, zono_coef=coef)
@@ -137,7 +145,7 @@ class ZonoTransformer:
         self.linear_centers.append(center)
         self.linear_coefs.append(coef)
 
-    def get_all_linear_bounds(self):
+    def get_all_linear_bounds_wt_constraints(self):
         lbs = []
         ubs = []
 
@@ -153,6 +161,14 @@ class ZonoTransformer:
             lbs.append(lb)
             ubs.append(ub)
 
+        # update bounds without constraints.
+        lbs.pop()
+        ubs.pop()
+        coef_abs = torch.sum(torch.abs(self.final_layer_without_constr_coef), dim=0)
+        lb = self.final_layer_without_constr_center - coef_abs
+        ub = self.final_layer_without_constr_center + coef_abs
+        lbs.append(lb)
+        ubs.append(ub)
         return lbs, ubs
 
 
@@ -310,6 +326,8 @@ class ZonoTransformer:
         weight = layer.weight.T
         bias = layer.bias
         if last_layer:
+            org_weight = weight
+            org_bias = bias
             weight = weight @ self.prop.output_constr_mat()
             bias = bias @ self.prop.output_constr_mat() + self.prop.output_constr_const()
             self.populate_perturbation_scaling_factor(weight, self.prop.output_constr_mat())
@@ -321,6 +339,10 @@ class ZonoTransformer:
 
         center = prev_cent @ weight + bias
         cof = prev_cof @ weight
+
+        if last_layer:
+            self.final_layer_without_constr_center = prev_cent @ org_weight + org_bias
+            self.final_layer_without_constr_coef = prev_cof @ org_weight
 
         self.set_zono(center, cof)
         self.set_linear_zono(center=center, coef=cof)
@@ -437,17 +459,3 @@ class ZonoTransformer:
 
     def verify_robustness(self, y, true_label):
         pass
-
-# def absmul(lb, ub, weight, bias, down = True):
-#     ''' 
-#     Absdomain multiplication
-#     '''
-#     pos_wgt = F.relu(weight)
-#     neg_wgt = -F.relu(-weight)
-
-#     if down:
-#         new_ilb = lb @ pos_wgt + ub @ neg_wgt
-#         return new_ilb
-#     else:
-#         new_iub = ub @ pos_wgt + lb @ neg_wgt
-#         return new_iub

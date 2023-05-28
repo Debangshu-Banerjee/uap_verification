@@ -35,10 +35,10 @@ class UAPLPtransformer:
         
         t_max = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f't_max')
         self.gmdl.addGenConstrMax(t_max, t_mins)
-        self.model.reset()
+        self.gmdl.reset()
         self.gmdl.setObjective(t_max, grb.GRB.MINIMIZE)
-        self.model.optimize()
-        if self.model.status == 2:
+        self.gmdl.optimize()
+        if self.gmdl.status == 2:
             return t_max.X
         else:
             return NotImplementedError
@@ -55,10 +55,10 @@ class UAPLPtransformer:
             self.gmdl.addConstr(bs[-1] == (t_min >= 0))
         p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f'p')
         self.gmdl.addConstr(p == self.gmdl.quicksum(bs[i] for i in range(self.batch_size)) / self.batch_size)
-        self.model.reset()
+        self.gmdl.reset()
         self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
-        self.model.optimize()
-        if self.model.status == 2:
+        self.gmdl.optimize()
+        if self.gmdl.status == 2:
             return p.X
         else:
             return NotImplementedError
@@ -131,7 +131,7 @@ class UAPLPtransformer:
                         elif self.x_ubs[layer_idx][k][i][j] <= 0:
                             self.gmdl.addConstr(d[i][j] == -self.gurobi_variables[-1]['vs'][r])
                         #elif self.x1_l[layer_idx][i][j] >= 0:
-                        elif self.x_ubsu[layer_idx][r][i][j] <= 0:
+                        elif self.x_ubs[layer_idx][r][i][j] <= 0:
                             self.gmdl.addConstr(d[i][j] == self.gurobi_variables[-1]['vs'][k])
                         #elif self.x2_l[layer_idx][i][j] >= 0:
                         else:
@@ -145,20 +145,23 @@ class UAPLPtransformer:
         raise NotImplementedError
 
     def get_layer_type(self, layer):
-        if self.format == "onnx":
-            return layer.type
+        return layer.type
 
-        if self.format == "torch":
-            if type(layer) is nn.Linear:
-                return LayerType.Linear
-            elif type(layer) is nn.Conv2d:
-                return LayerType.Conv2D
-            elif type(layer) == nn.ReLU:
-                return LayerType.ReLU
-            elif type(layer) == nn.Flatten():
-                return LayerType.Flatten
-            else:
-                return LayerType.NoOp
-                # raise ValueError("Unsupported layer type for torch model!", type(layer))
+    # def get_layer_type(self, layer):
+    #     if self.format == "onnx":
+    #         return layer.type
 
-        raise ValueError("Unsupported model format or model format not set!")
+    #     if self.format == "torch":
+    #         if type(layer) is nn.Linear:
+    #             return LayerType.Linear
+    #         elif type(layer) is nn.Conv2d:
+    #             return LayerType.Conv2D
+    #         elif type(layer) == nn.ReLU:
+    #             return LayerType.ReLU
+    #         elif type(layer) == nn.Flatten():
+    #             return LayerType.Flatten
+    #         else:
+    #             return LayerType.NoOp
+    #             # raise ValueError("Unsupported layer type for torch model!", type(layer))
+
+    #     raise ValueError("Unsupported model format or model format not set!")
