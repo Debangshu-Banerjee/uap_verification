@@ -1,0 +1,248 @@
+No CUDA runtime is found, using CUDA_HOME='/usr/local/cuda'
+
+
+ ***** verifying property ***** 
+
+
+Set parameter Username
+Academic license - for non-commercial use only - expires 2023-10-08
+DeepZ lbs [tensor(-6.4207), tensor(-2.7882), tensor(-1.8768), tensor(-1.3194), tensor(-0.6802), tensor(-0.1937), tensor(0.7707), tensor(1.7111), tensor(2.2541), tensor(6.4655)]
+Baseline proportion  0.6000000000000001
+Diff Verified percentages 0.6
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-3.2836), tensor(-0.3113), tensor(-0.2335), tensor(1.0136), tensor(1.2546), tensor(2.0755), tensor(2.7687), tensor(2.9393), tensor(3.9081), tensor(6.3477)]
+Baseline proportion  0.8
+Diff Verified percentages 0.9
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-3.9858), tensor(-2.5049), tensor(-0.6207), tensor(-0.5732), tensor(1.6689), tensor(2.0694), tensor(3.1224), tensor(4.8404), tensor(7.4356), tensor(7.6393)]
+Baseline proportion  0.7000000000000001
+Diff Verified percentages 0.8
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-4.2826), tensor(-3.8641), tensor(-3.8494), tensor(-1.8383), tensor(-1.3562), tensor(0.5902), tensor(1.5714), tensor(2.3785), tensor(2.9834), tensor(5.1746)]
+Baseline proportion  0.5
+Diff Verified percentages 0.5
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-5.0223), tensor(-4.4284), tensor(-3.9070), tensor(-3.2223), tensor(-2.2992), tensor(-1.1454), tensor(-0.2002), tensor(0.7773), tensor(1.6177), tensor(5.0742)]
+Baseline proportion  0.4
+Diff Verified percentages 0.5
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-5.0075), tensor(-3.2115), tensor(-2.6404), tensor(-0.2950), tensor(0.4209), tensor(2.1875), tensor(3.7965), tensor(4.4114), tensor(5.9193), tensor(7.6075)]
+Baseline proportion  0.6000000000000001
+Diff Verified percentages 0.7
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-7.9237), tensor(-6.8348), tensor(-5.2601), tensor(0.0218), tensor(0.4662), tensor(1.4797), tensor(2.5580), tensor(2.9631), tensor(5.3608), tensor(6.4298)]
+Baseline proportion  0.7000000000000001
+Diff Verified percentages 0.7
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-2.3456), tensor(-1.8604), tensor(-0.7387), tensor(-0.1515), tensor(0.2841), tensor(0.4275), tensor(0.5275), tensor(6.0092), tensor(6.4788), tensor(9.2113)]
+Baseline proportion  0.7000000000000001
+Diff Verified percentages 0.8
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-3.8477), tensor(-0.8739), tensor(-0.0901), tensor(1.0315), tensor(1.1519), tensor(2.7173), tensor(5.2955), tensor(6.0424), tensor(6.2376), tensor(8.4765)]
+Baseline proportion  0.8
+Diff Verified percentages 0.8
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-7.2165), tensor(-6.2101), tensor(-3.4698), tensor(-2.1071), tensor(-0.7055), tensor(1.1679), tensor(1.7187), tensor(1.8216), tensor(5.7322), tensor(7.8892)]
+Baseline proportion  0.5
+Diff Verified percentages 0.5
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-6.0143), tensor(-4.7858), tensor(0.5991), tensor(0.7447), tensor(1.1467), tensor(1.7979), tensor(2.0546), tensor(5.3523), tensor(7.3648), tensor(8.5176)]
+Baseline proportion  0.8
+Diff Verified percentages 0.8
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-5.7869), tensor(-3.7093), tensor(-3.4095), tensor(-3.2712), tensor(-2.9559), tensor(-1.1039), tensor(-0.9228), tensor(1.0923), tensor(4.1056), tensor(6.0949)]
+Baseline proportion  0.30000000000000004
+Diff Verified percentages 0.5
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-2.4212), tensor(-2.1914), tensor(-1.3650), tensor(-0.6961), tensor(-0.1864), tensor(3.1075), tensor(3.7571), tensor(5.5022), tensor(6.6061), tensor(7.2458)]
+Baseline proportion  0.6
+Diff Verified percentages 0.7
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-4.7472), tensor(-0.0790), tensor(0.3783), tensor(0.6468), tensor(3.2404), tensor(4.8475), tensor(5.0603), tensor(6.8598), tensor(7.4127), tensor(7.9483)]
+Baseline proportion  0.9
+Diff Verified percentages 0.9
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-8.5189), tensor(-4.1492), tensor(-1.9668), tensor(-1.7803), tensor(0.3297), tensor(1.2043), tensor(1.9256), tensor(3.0428), tensor(3.3993), tensor(6.3120)]
+Baseline proportion  0.6000000000000001
+Diff Verified percentages 0.6
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-4.1259), tensor(-2.8499), tensor(-2.6166), tensor(-1.5882), tensor(-1.0007), tensor(-0.3042), tensor(-0.0719), tensor(0.4568), tensor(0.5982), tensor(2.7588)]
+Baseline proportion  0.4
+Diff Verified percentages 0.5
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-2.5978), tensor(-0.6049), tensor(0.2433), tensor(1.4790), tensor(1.9070), tensor(4.3591), tensor(5.3842), tensor(5.5384), tensor(6.2744), tensor(14.2423)]
+Baseline proportion  0.8
+Diff Verified percentages 0.8
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-10.3813), tensor(-4.1494), tensor(-3.3995), tensor(-1.9340), tensor(-0.5180), tensor(-0.0515), tensor(0.8493), tensor(1.0536), tensor(2.8622), tensor(3.3767)]
+Baseline proportion  0.5
+Diff Verified percentages 0.6
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-5.8139), tensor(-3.9742), tensor(-1.3069), tensor(-1.0340), tensor(-0.7850), tensor(-0.0314), tensor(0.9765), tensor(2.1053), tensor(7.4095), tensor(9.7171)]
+Baseline proportion  0.6000000000000001
+Diff Verified percentages 0.7
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-7.3010), tensor(-5.8221), tensor(-5.2065), tensor(-3.4399), tensor(-2.7229), tensor(-1.6185), tensor(1.2541), tensor(2.4950), tensor(5.1222), tensor(6.9725)]
+Baseline proportion  0.4
+Diff Verified percentages 0.4
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-3.4623), tensor(-1.5261), tensor(-1.1140), tensor(-0.6788), tensor(-0.6449), tensor(0.2744), tensor(0.4400), tensor(2.0706), tensor(5.8043), tensor(6.7363)]
+Baseline proportion  0.6
+Diff Verified percentages 0.7
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-6.9153), tensor(-3.7277), tensor(-2.5050), tensor(-1.0507), tensor(-0.3483), tensor(0.2767), tensor(0.3119), tensor(1.0142), tensor(1.3919), tensor(4.3622)]
+Baseline proportion  0.6
+Diff Verified percentages 0.7
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-6.7295), tensor(-3.9825), tensor(-2.8188), tensor(-1.5860), tensor(-1.2191), tensor(-0.5236), tensor(-0.3074), tensor(0.3182), tensor(4.0181), tensor(6.1516)]
+Baseline proportion  0.4
+Diff Verified percentages 0.5
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-4.7457), tensor(-3.7407), tensor(-3.4580), tensor(-2.7918), tensor(-1.4969), tensor(-1.1758), tensor(-0.7763), tensor(1.3046), tensor(2.9873), tensor(9.1380)]
+Baseline proportion  0.4
+Diff Verified percentages 0.5
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-7.3336), tensor(-7.0722), tensor(-4.9500), tensor(-3.3631), tensor(-1.8817), tensor(-1.4965), tensor(-0.4654), tensor(2.7544), tensor(7.1151), tensor(7.4470)]
+Baseline proportion  0.4
+Diff Verified percentages 0.4
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-5.9434), tensor(-5.7842), tensor(-5.1185), tensor(-3.6409), tensor(-1.8762), tensor(0.1757), tensor(1.6018), tensor(1.6185), tensor(2.1603), tensor(2.5374)]
+Baseline proportion  0.5
+Diff Verified percentages 0.5
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-5.2855), tensor(-3.0887), tensor(-2.9687), tensor(-1.9322), tensor(-0.7393), tensor(-0.2954), tensor(2.2417), tensor(3.1609), tensor(3.5840), tensor(4.6799)]
+Baseline proportion  0.4
+Diff Verified percentages 0.6
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-1.3428), tensor(-1.1261), tensor(-0.9747), tensor(-0.1652), tensor(0.3436), tensor(1.2660), tensor(1.9937), tensor(2.6044), tensor(4.3703), tensor(5.8205)]
+Baseline proportion  0.7000000000000001
+Diff Verified percentages 0.8
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-6.3727), tensor(-4.2813), tensor(-4.0838), tensor(-1.7182), tensor(1.0700), tensor(1.0777), tensor(1.4997), tensor(1.8702), tensor(3.0280), tensor(3.0848)]
+Baseline proportion  0.6000000000000001
+Diff Verified percentages 0.6
+
+
+ ***** verifying property ***** 
+
+
+DeepZ lbs [tensor(-7.0737), tensor(-0.1607), tensor(0.4155), tensor(1.1405), tensor(1.6054), tensor(1.8126), tensor(3.2060), tensor(3.2256), tensor(6.3611), tensor(13.5922)]
+Baseline proportion  0.8
+Diff Verified percentages 0.9
+
+Eps : 0.015
+Baseline verified: 176
+Uap verified: 194
+Extra verified: 18
