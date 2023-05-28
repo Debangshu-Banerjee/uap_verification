@@ -24,6 +24,7 @@ class UapBasic:
         verified_proportion = verified_count / len(self.baseline_results)
         if verified_proportion >= self.args.cutoff_percentage:
             verified_status = Status.VERIFIED
+        lbs.sort()
         print("lbs", lbs)
         return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
                             status=verified_status, global_lb=None, time_taken=total_time, 

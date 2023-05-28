@@ -13,6 +13,8 @@ class TestBasicUap(TestCase):
         uap_verfication_args = uap_ver.UapAnalysisArgs(
             individual_prop_domain=Domain.DEEPZ,
             domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.MNIST, sink_label=None,
-            spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=0.015, net=config.MNIST_LINEAR_50,                                                                                                              
-            timeout=100, output_dir='results/', radius_l=0.002, radius_r=0.25, uap_mode=analyzer.UAPMode.VERIFICATION)
+            spec_type=InputSpecType.UAP, count=20, count_per_prop=10, eps=0.015, net=config.MNIST_LINEAR_100,                                                                                                              
+            timeout=100, output_dir='results/', radius_l=0.002, radius_r=0.25, 
+            uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, 
+            no_lp_for_verified = True)
         uap_ver.UapVerification(uap_verfication_args)

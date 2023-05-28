@@ -10,6 +10,7 @@ class UapDiff:
         self.net = net
         self.props = props
         self.args = args
+        self.total_props = len(self.props)
         self.baseline_results = baseline_results
         self.difference_lbs_dict = {}
         self.difference_ubs_dict = {}
@@ -18,6 +19,8 @@ class UapDiff:
         self.input_lbs = []
         self.input_ubs = []
         self.constr_matrices = []
+        self.no_lp_for_verified = False
+        self.baseline_verified_props = 0
 
     def compute_difference_dict(self):
         for i in range(len(self.baseline_results)):
@@ -46,9 +49,23 @@ class UapDiff:
     def populate_matrices(self):
         for prop in self.props:
             self.constr_matrices.append(prop.get_input_clause(0).output_constr_mat())
+    
+    def prune_verified_props(self):
+        new_props = []
+        new_baseline_results = []
+        for i, prop in enumerate(self.props):
+            if torch.min(self.baseline_results[i].final_lb) >= 0.0:
+                self.baseline_verified_props += 1
+                continue
+            new_props.append(prop)
+            new_baseline_results.append(self.baseline_results[i])
+        self.props = new_props
+        self.baseline_results = new_baseline_results
 
     def run(self, proportion=False) -> UAPSingleRes:
         start_time = time.time()
+        if self.no_lp_for_verified == True:
+            self.prune_verified_props()
         self.populate_lbs_and_ubs()        
         self.compute_difference_dict()
         self.populate_matrices()
@@ -69,6 +86,8 @@ class UapDiff:
                 verified_status = Status.VERIFIED            
         else:
             verified_percentages = uap_lp_transformer.optimize_milp_percent()
+            verified_props = verified_percentages * len(self.props)
+            verified_percentages = (verified_props + self.baseline_verified_props) / self.total_props
             print("Diff Verified percentages", verified_percentages)
             if verified_percentages >= self.args.cutoff_percentage:
                 verified_status = Status.VERIFIED

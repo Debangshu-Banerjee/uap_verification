@@ -16,7 +16,8 @@ class UapAnalysisArgs:
     def __init__(self, individual_prop_domain, domain, baseline_domain, dataset='mnist', sink_label=None, 
                  spec_type=InputSpecType.UAP, count=None, count_per_prop=2, 
                  eps=0.01, net='', timeout=30, output_dir='', radius_l=0.1, 
-                 radius_r=0.3, uap_mode=UAPMode.RADIUS, cutoff_percentage = 0.5) -> None:
+                 radius_r=0.3, uap_mode=UAPMode.RADIUS, cutoff_percentage = 0.5,
+                 compute_proportion=False, no_lp_for_verified=False) -> None:
         self.individual_prop_domain = individual_prop_domain
         self.domain = domain
         self.baseline_domain = baseline_domain
@@ -34,6 +35,8 @@ class UapAnalysisArgs:
         self.radius_r = radius_r
         self.uap_mode = uap_mode
         self.cutoff_percentage = cutoff_percentage
+        self.compute_proportion = compute_proportion
+        self.no_lp_for_verified = no_lp_for_verified
 
 
 def UapVerification(uap_verification_args: UapAnalysisArgs):
@@ -65,6 +68,7 @@ def UapVerificationBackend(props, uap_verification_args):
     input_per_prop = uap_verification_args.count_per_prop
     uap_result_list = UAPResultList()
     for i in range(uap_prop_count):
+        print("\n\n ***** verifying property ***** \n\n")
         props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop] 
         # new_prop = deepcopy(props[0])
         # new_prop.update_input(eps=0.2)       
@@ -73,4 +77,4 @@ def UapVerificationBackend(props, uap_verification_args):
         # run the uap verification
         res = uap_analyzer.run()
         uap_result_list.add_results(res)
-    # uap_result_list.analyze(uap_verification_args)
+    uap_result_list.analyze(uap_verification_args)

@@ -60,6 +60,7 @@ MNIST_FFN_L4 = "mnist-net_256x4.onnx"   # 1024 neurons
 MNIST_FFN_torch1 = "cpt/fc1.pt"
 MNIST_STANDARD_MODIFIED = "mnist_standard_modified.pt"
 MNIST_LINEAR_50 = "mnist_relu_3_50.onnx"
+MNIST_LINEAR_100 = "mnist_relu_3_100.onnx"
 
 # MNIST crown-ibp network
 MNIST_CROWN_IBP = "mnist_cnn_2layer_width_1_best.pth"

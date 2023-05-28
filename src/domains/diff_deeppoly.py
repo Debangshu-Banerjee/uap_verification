@@ -260,9 +260,6 @@ class DiffDeepPoly:
         # lambda_ub_input2 = torch.where(input1_active & input2_unsettled, -lambda_lb_input2_prop, lambda_ub_input2)
         # mu_lb = torch.where(input1_active & input2_unsettled, -mu_ub_input2_prop, mu_lb)
 
- 
-
-
         # case 8 (x.lb < 0 and x.ub > 0) and (y.lb >= 0)
         lambda_lb = torch.where(input1_unsettled & input2_active, torch.ones(lb_input1_layer.size(), device=self.device), lambda_lb)
         lambda_ub = torch.where(input1_unsettled & input2_active, torch.zeros(lb_input1_layer.size(), device=self.device), lambda_ub)
@@ -323,18 +320,18 @@ class DiffDeepPoly:
         neg_comp_lb_input2, pos_comp_lb_input2 = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_input2_coef)
         neg_comp_ub_input2, pos_comp_ub_input2 = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_input2_coef)
 
-        self.log_file.write(f"lower bound input1 {lb_input1_layer}\n\n")
-        self.log_file.write(f"upper bound input1 {ub_input1_layer}\n\n")
-        self.log_file.write(f"lower bound input2 {lb_input2_layer}\n\n")
-        self.log_file.write(f"upper bound input2 {ub_input2_layer}\n\n")
-        self.log_file.write(f"lambda lb {lambda_lb}\n\n")
-        self.log_file.write(f"lambda ub {lambda_ub}\n\n")
-        self.log_file.write(f"lambda lb input1 {lambda_lb_input1}\n\n")
-        self.log_file.write(f"lambda ub input1 {lambda_ub_input1}\n\n")
-        self.log_file.write(f"lambda lb input2 {lambda_lb_input2}\n\n")
-        self.log_file.write(f"lambda ub input2 {lambda_ub_input2}\n\n")                        
-        self.log_file.write(f"mu lb {mu_lb}\n\n")
-        self.log_file.write(f"mu ub {mu_ub}\n\n")
+        # self.log_file.write(f"lower bound input1 {lb_input1_layer}\n\n")
+        # self.log_file.write(f"upper bound input1 {ub_input1_layer}\n\n")
+        # self.log_file.write(f"lower bound input2 {lb_input2_layer}\n\n")
+        # self.log_file.write(f"upper bound input2 {ub_input2_layer}\n\n")
+        # self.log_file.write(f"lambda lb {lambda_lb}\n\n")
+        # self.log_file.write(f"lambda ub {lambda_ub}\n\n")
+        # self.log_file.write(f"lambda lb input1 {lambda_lb_input1}\n\n")
+        # self.log_file.write(f"lambda ub input1 {lambda_ub_input1}\n\n")
+        # self.log_file.write(f"lambda lb input2 {lambda_lb_input2}\n\n")
+        # self.log_file.write(f"lambda ub input2 {lambda_ub_input2}\n\n")                        
+        # self.log_file.write(f"mu lb {mu_lb}\n\n")
+        # self.log_file.write(f"mu ub {mu_ub}\n\n")
 
 
         delta_lb_coef = pos_comp_lb * lambda_lb + neg_comp_lb * lambda_ub
@@ -468,6 +465,11 @@ class DiffDeepPoly:
 
 
         return delta_lb, delta_ub
+    
+    def swap_inputs(self):
+        self.lb_input1, self.lb_input2 = (self.lb_input2, self.lb_input1)
+        self.ub_input1, self.ub_input2 = (self.ub_input2, self.ub_input1)
+        self.diff = -self.diff        
 
     def run(self):
         self.log_file = open(self.diff_log_filename, 'w+')
@@ -502,12 +504,43 @@ class DiffDeepPoly:
             curr_delta_ub = torch.min(brute_delta_ub, curr_delta_ub)
             delta_lbs.append(curr_delta_lb)
             delta_ubs.append(curr_delta_ub)
-        
-        self.log_file.write(f'Final layer lb input1  {self.lb_input1[-2]}\n\n')
-        self.log_file.write(f'Final layer ub input1  {self.ub_input1[-2]}\n\n')
-        self.log_file.write(f'Final layer lb input2  {self.lb_input2[-2]}\n\n')
-        self.log_file.write(f'Final layer ub input2  {self.ub_input2[-2]}\n\n')
 
+        delta_lbs_reverse = []
+        delta_ubs_reverse = []        
+        # Reverse computation (y - x)
+        # First swap input1 and input2
+        self.swap_inputs()
+        self.log_file.write("Started in reverse direction \n\n")
+        for linear_layer_index, layer_index in enumerate(self.linear_conv_layer_indices):
+            curr_delta_lb, curr_delta_ub = self.back_substitution(layer_index=layer_index, 
+                                                                  linear_layer_index=linear_layer_index,
+                                                                  delta_lbs=delta_lbs_reverse, delta_ubs=delta_ubs_reverse)
+            
+            if not torch.all(curr_delta_lb <= curr_delta_ub + 1e-6) :
+                print(f"Issue {curr_delta_lb  - curr_delta_ub }\n\n")
+                assert torch.all(curr_delta_lb <= curr_delta_ub + 1e-6)
+            brute_delta_lb = self.lb_input1[linear_layer_index] - self.ub_input2[linear_layer_index]
+            brute_delta_ub = self.ub_input1[linear_layer_index] - self.lb_input2[linear_layer_index]            
+            self.log_file.write(f"curr_delta_lb {linear_layer_index} {curr_delta_lb}\n\n")            
+            self.log_file.write(f'curr_diff_delta_lb {linear_layer_index} {brute_delta_lb}\n\n')
+            self.log_file.write(f"curr_delta_ub {linear_layer_index} {curr_delta_ub}\n\n")            
+            self.log_file.write(f'curr_diff_delta_ub {linear_layer_index} {brute_delta_ub}\n\n')
+            curr_delta_lb = torch.max(brute_delta_lb, curr_delta_lb)
+            curr_delta_ub = torch.min(brute_delta_ub, curr_delta_ub)
+            delta_lbs_reverse.append(curr_delta_lb)
+            delta_ubs_reverse.append(curr_delta_ub)
+        
+        # Compute final lbs, ubs
+        final_delta_lbs = []
+        final_delta_ubs = []
+
+        for i, delta_lb in enumerate(delta_lbs):
+            final_delta_lb = torch.maximum(delta_lb, -delta_ubs_reverse[i])
+            final_delta_ub = torch.minimum(delta_ubs[i], -delta_lbs_reverse[i])
+            final_delta_lbs.append(final_delta_lb)
+            final_delta_ubs.append(final_delta_ub)
+            self.log_file.write(f"final_delta_lb {i} {final_delta_lb}\n\n")          
+            self.log_file.write(f"final_delta_ub {i} {final_delta_ub}\n\n")           
         self.log_file.close()
 
         return delta_lbs, delta_ubs

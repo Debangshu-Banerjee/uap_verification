@@ -33,27 +33,21 @@ class UAPResultList:
         count = args.count
         baseline_verified_count = 0
         uap_verified_count = 0        
-        total_baseline_time = 0
-        total_additional_time = 0
-        for res in self.result_list:
+        filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}.dat'
+        file = open(filename, 'a+')
+        for i, res in enumerate(self.result_list):
             baseline_res = res.baseline_res
             UAP_res = res.UAP_res
-            total_baseline_time += baseline_res.time_taken            
-            if baseline_res.status is Status.VERIFIED:
-                baseline_verified_count += 1
-            else:
-                total_additional_time += UAP_res.time_taken
-            if UAP_res.status is Status.VERIFIED:
-                uap_verified_count += 1
-        avg_baseline_time = total_baseline_time / count
-        avg_uap_time = (total_baseline_time + total_additional_time) / count
-        baseline_accuracy = baseline_verified_count / count * 100
-        uap_accuracy = uap_verified_count / count * 100
-        filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}.dat'
-        file = open(filename, 'a+') 
-        file.write(f'Eps : {args.eps}\n')
-        file.write(f'Baseline-accuray : {baseline_accuracy}\n')
-        file.write(f'Uap-ver-accuray : {uap_accuracy}\n')
-        file.write(f'Avg-baseline-time : {avg_baseline_time}\n')
-        file.write(f'Avg-uap-ver-time : {avg_uap_time}\n')
+            file.write(f'\nProperty No. {i}\n\n')
+            if baseline_res.verified_proportion is not None:
+                baseline_verified_count += baseline_res.verified_proportion * args.count_per_prop
+                file.write(f"baseline verified proportion {baseline_res.verified_proportion}\n")
+
+            if UAP_res.verified_proportion is not None:
+                uap_verified_count += UAP_res.verified_proportion * args.count_per_prop
+                file.write(f"Uap verified proportion {UAP_res.verified_proportion}\n")
+        file.write(f'\n\n\nEps : {args.eps}\n')
+        file.write(f'Baseline verified: {baseline_verified_count}\n')
+        file.write(f'Uap verified: {uap_verified_count}\n')
+        file.write(f'Extra verified: {uap_verified_count - baseline_verified_count}\n')
         file.close()                 

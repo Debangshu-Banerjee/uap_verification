@@ -83,6 +83,7 @@ class UapBasicLP:
             self.model.update()
 
     def run_zono_lp_baseline(self, proportion):
+        self.baseline_lbs.sort()
         print("DeepZ lbs", self.baseline_lbs)
         self.formulate_zono_lb()
         if proportion == False:

@@ -1,7 +1,7 @@
 import torch
 import src.util as util 
 from src.uap_results import *
-from src.common import Status
+from src.common import Status, Domain
 from src.domains.domain_transformer import domain_transformer
 from src.baseline_uap_verifier import BaselineAnalyzerBackend
 from src.uap_domains.uap_domain_transformer import get_uap_domain_transformer
@@ -42,9 +42,11 @@ class UAPAnalyzerBackendWrapper:
 
     def run_uap_verification(self, domain, individual_verification_results):
         uap_verifier = get_uap_domain_transformer(domain=domain, net=self.net, props=self.props, 
-                                                           args=self.args, baseline_results=individual_verification_results)
-        print("Uap verifier Type", type(uap_verifier))
-        return uap_verifier.run(proportion=True)
+                                                           args=self.args, 
+                                                           baseline_results=individual_verification_results)
+        if self.args.no_lp_for_verified == True and domain == Domain.UAP_DIFF:
+            uap_verifier.no_lp_for_verified = True
+        return uap_verifier.run(proportion=self.args.compute_proportion)
 
 
 # class UAPAnalyzerBackend:

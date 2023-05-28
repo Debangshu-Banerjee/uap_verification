@@ -24,16 +24,20 @@ class UAPLPtransformer:
         self.debug = True
         self.debug_log_file = None
         self.constraint_matrices = constraint_matrices
-        self.tolerence = 1e-6
+        self.tolerence = 1e-4
 
 
     def create_lp(self):
+        if self.batch_size <= 0:
+            return
         self.debug_log_file = open(self.debug_log_filename, 'w+')
         self.gmdl.setParam('OutputFlag', False)
         self.create_constraints()
 
     def optimize_lp(self):
-        # assert len(self.constraint_matrices) == self.batch_size
+        assert len(self.constraint_matrices) == self.batch_size
+        if self.batch_size <= 0:
+            return 0.0
         final_vars = []
         final_min_vars = []
         for i in range(self.batch_size):
@@ -47,19 +51,6 @@ class UAPLPtransformer:
                                                 name=f'final_var_min_{i}')
             self.gmdl.addGenConstrMin(final_var_min, final_var.tolist())
             final_min_vars.append(final_var_min)
-            self.gmdl.setObjective(final_var_min, grb.GRB.MINIMIZE)
-            self.gmdl.optimize()
-            if self.debug_log_file is not None:
-                if self.gmdl.status == 2:
-                    self.debug_log_file.write(f" var minimum prop {i} : {final_var_min.X} \n\n")
-                else:
-                    print("Gurobi model status", self.gmdl.status)
-                    print("The optimization failed\n")
-                    print("Computing computeIIS")
-                    self.gmdl.computeIIS()
-                    print("Computing computeIIS finished")            
-                    self.gmdl.write("model.ilp")    
-
         problem_min = self.gmdl.addVar(lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, 
                                         name='problem_min')
         self.gmdl.addGenConstrMax(problem_min, final_min_vars)
@@ -67,7 +58,7 @@ class UAPLPtransformer:
         self.gmdl.optimize()
         if self.gmdl.status == 2:
             self.debug_log_file.write(f"Problem min {problem_min.X}\n")
-            print(f"Problem min {problem_min.X}\n")
+            # print(f"Problem min {problem_min.X}\n")
             self.debug_log_file.close()
             return problem_min.X
         else:
@@ -80,6 +71,8 @@ class UAPLPtransformer:
     
     def optimize_milp_percent(self):
         assert len(self.constraint_matrices) == self.batch_size
+        if self.batch_size <= 0:
+            return 0.0
         bs = []
         final_vars = []
         final_min_vars = []
@@ -111,7 +104,7 @@ class UAPLPtransformer:
         self.gmdl.optimize()
         if self.gmdl.status == 2:
             self.debug_log_file.write(f"proportion {p.X}\n")
-            print(f"verified proportion {p.X}\n")
+            # print(f"verified proportion {p.X}\n")
             self.debug_log_file.close()
             return p.X
         else:
@@ -133,6 +126,11 @@ class UAPLPtransformer:
         # ensure all inputs are perturbed by the same uap delta.
         for i, v in enumerate(vs):
             self.gmdl.addConstr(v == self.xs[i].numpy() + delta)
+        # ds = [[self.gmdl.addMVar(self.xs[i].shape[0], lb= self.xs[i].numpy() - self.xs[j].numpy()-self.tolerence, ub=self.xs[i].numpy() - self.xs[j].numpy()+self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'input({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
+        # for i in range(self.batch_size):
+        #     for j in range(i+1, self.batch_size):
+        #         self.gmdl.addConstr(ds[i][j - i -1] == self.xs[i].numpy() - self.xs[j].numpy())                
+        
         self.gurobi_variables.append({'delta': delta, 'vs': vs, 'ds': None})
 
     def create_constraints(self):
@@ -156,11 +154,13 @@ class UAPLPtransformer:
     def create_vars(self, layer_idx, layer_type=''):
         if layer_type == 'linear':            
             vs = [self.gmdl.addMVar(self.x_lbs[i][self.linear_layer_idx].shape[0], lb = self.x_lbs[i][self.linear_layer_idx] - 10.0, ub = self.x_ubs[i][self.linear_layer_idx] + 10.0, vtype=grb.GRB.CONTINUOUS, name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
+            ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
         elif layer_type == 'relu':
             vs = [self.gmdl.addMVar(self.x_lbs[i][self.linear_layer_idx].shape[0], lb =0.0, ub = np.maximum(self.x_ubs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])), vtype=grb.GRB.CONTINUOUS, name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
+            ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
         else:
             raise ValueError(f'layer type {layer_type} is supported yet')
-        ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
+
         return vs, ds
     
     def create_linear_constraints(self, layer, layer_idx):
@@ -173,17 +173,17 @@ class UAPLPtransformer:
         for v_idx, v in enumerate(vs):
             self.gmdl.addConstr(v == weight @ self.gurobi_variables[-1]['vs'][v_idx] + bias)
 
-        if self.debug:
-            self.gmdl.setObjective(vs[0][1], grb.GRB.MINIMIZE)
-            self.gmdl.optimize()
-            v_lb = vs[0][1].X
-            base_lb = self.x_lbs[0][self.linear_layer_idx][1]
-            base_ub = self.x_ubs[0][self.linear_layer_idx][1]            
-            self.gmdl.setObjective(vs[0][1], grb.GRB.MAXIMIZE)
-            self.gmdl.optimize()
-            v_ub = vs[0][1].X
-            self.debug_log_file.write(f"lb : {v_lb} ub : {v_ub}\n\n")
-            self.debug_log_file.write(f"baseline lb  : {base_lb} ub : {base_ub}\n\n")
+        # if self.debug:
+        #     self.gmdl.setObjective(vs[0][1], grb.GRB.MINIMIZE)
+        #     self.gmdl.optimize()
+        #     v_lb = vs[0][1].X
+        #     base_lb = self.x_lbs[0][self.linear_layer_idx][1]
+        #     base_ub = self.x_ubs[0][self.linear_layer_idx][1]            
+        #     self.gmdl.setObjective(vs[0][1], grb.GRB.MAXIMIZE)
+        #     self.gmdl.optimize()
+        #     v_ub = vs[0][1].X
+        #     self.debug_log_file.write(f"lb : {v_lb} ub : {v_ub}\n\n")
+        #     self.debug_log_file.write(f"baseline lb  : {base_lb} ub : {base_ub}\n\n")
 
         
         for i in range(self.batch_size):
@@ -191,10 +191,11 @@ class UAPLPtransformer:
                 self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].numpy() + self.tolerence))
                 self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].numpy() - self.tolerence))
 
-        # I am not using this for now will come back to it.
-        # for i in range(self.batch_size):
-        #     for j in range(i+1, self.batch_size):
-        #         self.gmdl.addConstr(self.gurobi_variables[-1]['ds'][i][k] == weight @ (self.gurobi_variables[-1]['vs'][i] - self.gurobi_variables[-1]['vs'][j])) #is this right?
+        if self.linear_layer_idx > 0:
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    self.gmdl.addConstr(ds[i][j - i - 1] <= weight @ self.gurobi_variables[-1]['ds'][i][j - i -1] + self.tolerence)
+                    self.gmdl.addConstr(ds[i][j - i - 1] >= weight @ self.gurobi_variables[-1]['ds'][i][j - i -1] - self.tolerence)        
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
 
 
@@ -222,7 +223,44 @@ class UAPLPtransformer:
                     slope = ub / (ub - lb + 1e-15)
                     mu = -slope * lb
                     self.gmdl.addConstr(vs[i][j] <= slope * self.gurobi_variables[-1]['vs'][i][j] + mu)
-
+        
+        for i in range(self.batch_size):
+            for j in range(i+1, self.batch_size):
+                tensor_length = self.x_lbs[i][self.linear_layer_idx].shape[0]
+                for k in range(tensor_length):
+                    # case 1 x unsettled & y passive
+                    x_active = (self.x_lbs[i][self.linear_layer_idx][k] >= 0)
+                    x_passive = (self.x_ubs[i][self.linear_layer_idx][k] <= 0)
+                    x_unsettled = (~x_active) & (~x_passive)
+                    y_active = (self.x_lbs[j][self.linear_layer_idx][k] >= 0)
+                    y_passive = (self.x_ubs[j][self.linear_layer_idx][k] <= 0)
+                    y_unsettled = (~y_active) & (~y_passive)
+                    delta_active = (self.d_lbs[(i, j)][self.linear_layer_idx][k] >= 0)
+                    delta_passive = (self.d_ubs[(i, j)][self.linear_layer_idx][k] <= 0)
+                    delta_unsettled = (~delta_active) & (~delta_passive)                                                                                
+                    if x_unsettled and y_passive and delta_active:
+                        self.gmdl.addConstr(ds[i][j - i -1][k] <= self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                    elif x_unsettled and y_active:
+                        self.gmdl.addConstr(ds[i][j - i -1][k] >= self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                    elif x_passive and y_unsettled and delta_passive:
+                        self.gmdl.addConstr(ds[i][j - i -1][k] >= self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                    elif x_active and y_unsettled:
+                        self.gmdl.addConstr(ds[i][j - i -1][k] <= self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                    elif x_unsettled and y_unsettled and delta_active:
+                        self.gmdl.addConstr(ds[i][j - i -1][k] <= self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                        self.gmdl.addConstr(ds[i][j - i -1][k] >= 0.0)                        
+                    elif x_unsettled and y_unsettled and delta_passive:
+                        self.gmdl.addConstr(ds[i][j - i -1][k] >= self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                        self.gmdl.addConstr(ds[i][j - i -1][k] <= 0.0)
+                    elif x_unsettled and y_unsettled and delta_unsettled:
+                        temp_lb = self.d_lbs[(i, j)][self.linear_layer_idx][k]
+                        temp_ub = self.d_ubs[(i, j)][self.linear_layer_idx][k]
+                        d_lambda_lb = temp_lb / (temp_lb - temp_ub + 1e-15)
+                        d_lambda_ub = temp_ub / (temp_ub - temp_lb + 1e-15)
+                        d_mu_lb = d_lambda_ub * temp_lb
+                        d_mu_ub = -d_lambda_ub * temp_lb
+                        self.gmdl.addConstr(ds[i][j - i -1][k] >= d_lambda_lb * self.gurobi_variables[-1]['ds'][i][j - i -1][k] + d_mu_lb)
+                        self.gmdl.addConstr(ds[i][j - i -1][k] <= d_lambda_ub * self.gurobi_variables[-1]['ds'][i][j - i -1][k] + d_mu_ub)                                                
         # We add lp formulation for computing differences in the next iterations.
         # for k in range(len(ds)): #this seems terrible and slow, ill speed it up
         #     for l in range(len(ds[k])):
