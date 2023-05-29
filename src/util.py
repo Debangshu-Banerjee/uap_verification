@@ -25,7 +25,7 @@ from src.domains.deepz import ZonoTransformer
 from src.domains.lptransformer import LPTransformer
 from src.domains.deepz_uap import ZonoUAPTransformer
 from src.networks import FullyConnected, Conv
-from src.common.network import LayerType
+from src.common.network import LayerType, Layer
 
 rt.set_default_logger_severity(3)
 
@@ -349,7 +349,21 @@ def prune_last_layer(weight, indices):
         else:
             raise ValueError("Inidices out of range")
 
-def get_net(net_name, dataset):
+def get_debug_network():
+    network = []
+    weight1 = torch.tensor([[2, -1], [3, -1]], dtype=torch.float)
+    weight2 = torch.tensor([[1, -1], [-1, 1]], dtype=torch.float)
+    weight3 = torch.tensor([[1, 0], [0, 1]], dtype=torch.float)
+    network.append(Layer(weight=weight1, bias=torch.zeros(2), type=LayerType.Linear))
+    network.append(Layer(type=LayerType.ReLU))
+    network.append(Layer(weight=weight2, bias=torch.zeros(2), type=LayerType.Linear))
+    network.append(Layer(type=LayerType.ReLU))
+    network.append(Layer(weight=weight3, bias=torch.zeros(2), type=LayerType.Linear))
+    return network
+
+def get_net(net_name, dataset, debug_mode=False):
+    if debug_mode:
+        return get_debug_network()
     net_format = get_net_format(net_name)
     if net_format == 'pt':
         # Load the model

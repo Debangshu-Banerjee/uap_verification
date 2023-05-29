@@ -11,13 +11,20 @@ class OutSpecType(Enum):
 # Output constraint is represented as (A^T)*Y + B >= 0
 # Where constr_mat = (A, B)
 class Constraint:
-    def __init__(self, constr_type, is_conjunctive=True, constr_mat=None, label=None, sink_label=None):
+    def __init__(self, constr_type, is_conjunctive=True, constr_mat=None, 
+                 label=None, sink_label=None, debug_mode=False):
         self.constr_type = constr_type
         self.label = label
         self.constr_mat = constr_mat
         self.is_conjunctive = is_conjunctive
-
-        if constr_type == OutSpecType.LOCAL_ROBUST:
+        mat = None
+        if debug_mode == True:
+            if self.label == 0:
+                mat = torch.tensor([[1.0, -1.0], [1.0, -1.0]])
+            else:
+                mat = torch.tensor([[-1.0, 1.0], [-1.0, 1.0]])
+            self.constr_mat = (mat, 0)
+        if constr_type == OutSpecType.LOCAL_ROBUST and debug_mode == False:
             if label is not None:
                 mat = create_out_constr_matrix(label) 
             elif sink_label is not None:
@@ -25,7 +32,7 @@ class Constraint:
             else:
                 raise ValueError("Label or Sink Label has to be not None")
             self.constr_mat = (mat, 0)
-
+            
 def create_out_constr_matrix(label):
     n_classes = 10
     mat = torch.zeros(size=(n_classes, n_classes - 1))

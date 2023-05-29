@@ -228,7 +228,6 @@ def process_input_for_target_label(inputs, labels, target_label, target_count=0)
     new_labels = torch.stack(new_labels)
     return new_inputs, new_labels
 
-
 def process_input_for_sink_label(inputs, labels, sink_label, target_count=0):
     new_inputs = []
     new_labels = []
@@ -242,7 +241,9 @@ def process_input_for_sink_label(inputs, labels, sink_label, target_count=0):
     new_labels = torch.stack(new_labels)
     return new_inputs, new_labels
 
-def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_label=None):
+def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_label=None, debug_mode=False):
+    if debug_mode == True:
+        return generate_debug_specs(count=count, eps=eps)
     if dataset == Dataset.MNIST or dataset == Dataset.CIFAR10:
         if spec_type == InputSpecType.LINF:
             if count is None:
@@ -289,7 +290,24 @@ def get_acas_props(count):
         props.append(get_acas_spec(i))
     return props
 
-
+def generate_debug_specs(count=2, eps=1.0):
+    inputs = []
+    props = []
+    for i in range(count):
+        t = torch.rand(2)
+        if i % 2 == 0:
+            t += torch.tensor([10, 17])
+        else:
+            t += torch.tensor([17, 10])
+        inputs.append(t)
+    for i, input in enumerate(inputs):
+        ilb = input - eps
+        iub = input + eps
+        ilb = ilb.reshape(-1)
+        iub = iub.reshape(-1)
+        out_constr = Constraint(OutSpecType.LOCAL_ROBUST, label=torch.tensor([i%2]), debug_mode=True)
+        props.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset='dataset', input=input))
+    return props, inputs
 
 # Get the specification for local linf robusteness.
 # Untargeted uap are exactly same for local linf specs.

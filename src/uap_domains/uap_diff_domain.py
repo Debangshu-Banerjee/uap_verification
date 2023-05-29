@@ -69,11 +69,15 @@ class UapDiff:
         self.populate_lbs_and_ubs()        
         self.compute_difference_dict()
         self.populate_matrices()
+        if self.args.debug_mode is True:
+            print("input1 ", self.input_list[0])
+            print("input2 ", self.input_list[1])
         # Call the lp formulation with the differential lp code.
         uap_lp_transformer = UAPLPtransformer(mdl=self.net, xs=self.input_list, 
                                               eps=self.eps, x_lbs=self.input_lbs,
                                               x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
-                                              d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices)
+                                              d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
+                                              debug_mode=self.args.debug_mode)
         # Formulate the Lp problem.
         uap_lp_transformer.create_lp()
         verified_percentages = None

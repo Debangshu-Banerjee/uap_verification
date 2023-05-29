@@ -31,6 +31,9 @@ class ZonoTransformer:
             self.shape = (1, 28, 28)
         elif self.size == 3072:
             self.shape = (3, 32, 32)
+        elif self.size == 2:
+            # For debug network
+            self.shape = (1, 1, 2)
 
         self.ilb = self.ilb.to(device)
         self.iub = self.iub.to(device)

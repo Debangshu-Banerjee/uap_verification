@@ -17,7 +17,7 @@ class UapAnalysisArgs:
                  spec_type=InputSpecType.UAP, count=None, count_per_prop=2, 
                  eps=0.01, net='', timeout=30, output_dir='', radius_l=0.1, 
                  radius_r=0.3, uap_mode=UAPMode.RADIUS, cutoff_percentage = 0.5,
-                 compute_proportion=False, no_lp_for_verified=False) -> None:
+                 compute_proportion=False, no_lp_for_verified=False, no_file = False, debug_mode=False) -> None:
         self.individual_prop_domain = individual_prop_domain
         self.domain = domain
         self.baseline_domain = baseline_domain
@@ -37,13 +37,22 @@ class UapAnalysisArgs:
         self.cutoff_percentage = cutoff_percentage
         self.compute_proportion = compute_proportion
         self.no_lp_for_verified = no_lp_for_verified
-
+        self.no_file = no_file
+        self.debug_mode = debug_mode
+        # if debug mode on rewrite params
+        if debug_mode == True:
+            self.count = 1
+            self.count_per_prop = 2
+            self.eps = 0.2
+            self.net_name = 'debug.net'
+            self.net = 'debug.net'
 
 def UapVerification(uap_verification_args: UapAnalysisArgs):
     total_local_prop_count = uap_verification_args.count * uap_verification_args.count_per_prop
     props, _ = specs.get_specs(uap_verification_args.dataset, spec_type=uap_verification_args.spec_type,
                                     count=total_local_prop_count, eps=uap_verification_args.eps, 
-                                    sink_label=uap_verification_args.sink_label)
+                                    sink_label=uap_verification_args.sink_label,
+                                    debug_mode=uap_verification_args.debug_mode)
     if uap_verification_args.uap_mode is UAPMode.RADIUS:
         UapVerifiedRadiusBackend(props=props, uap_verification_args=uap_verification_args)
     elif uap_verification_args.uap_mode is UAPMode.VERIFICATION:
@@ -77,4 +86,5 @@ def UapVerificationBackend(props, uap_verification_args):
         # run the uap verification
         res = uap_analyzer.run()
         uap_result_list.add_results(res)
-    uap_result_list.analyze(uap_verification_args)
+    if uap_verification_args.no_file == True:
+       uap_result_list.analyze(uap_verification_args)

@@ -12,7 +12,7 @@ class UAPAnalyzerBackendWrapper:
     def __init__(self, props, args) -> None:
         self.props = props
         self.args = args
-        self.net = util.get_net(self.args.net, self.args.dataset)    
+        self.net = util.get_net(self.args.net, self.args.dataset, debug_mode=self.args.debug_mode)    
 
     def get_radius(self):
         pass
