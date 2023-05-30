@@ -12,7 +12,8 @@ class UAPAnalyzerBackendWrapper:
     def __init__(self, props, args) -> None:
         self.props = props
         self.args = args
-        self.net = util.get_net(self.args.net, self.args.dataset, debug_mode=self.args.debug_mode)    
+        with torch.no_grad():
+            self.net = util.get_net(self.args.net, self.args.dataset, debug_mode=self.args.debug_mode)    
 
     def get_radius(self):
         pass
@@ -31,8 +32,9 @@ class UAPAnalyzerBackendWrapper:
     
     def run(self) -> UAPResult:
         # Baseline results correspond to running each property individually.
-        baseline_verfier = BaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
-        individual_verification_results = baseline_verfier.run()
+        with torch.no_grad():
+            baseline_verfier = BaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
+            individual_verification_results = baseline_verfier.run()
         baseline_res = self.run_uap_verification(domain=self.args.baseline_domain, 
                                                  individual_verification_results=individual_verification_results)
         uap_algorithm_res = self.run_uap_verification(domain=self.args.domain, 

@@ -33,10 +33,11 @@ class UapDiff:
                 input2 = result2.input
                 input2_lbs = result2.layer_lbs
                 input2_ubs = result2.layer_ubs
-                diff_poly_ver = DiffDeepPoly(input1=input1, input2=input2, net=self.net, 
-                             lb_input1=input1_lbs, ub_input1=input1_ubs,
-                             lb_input2=input2_lbs, ub_input2=input2_ubs, device='cpu')
-                delta_lbs, delta_ubs = diff_poly_ver.run()
+                with torch.no_grad():
+                    diff_poly_ver = DiffDeepPoly(input1=input1, input2=input2, net=self.net, 
+                                lb_input1=input1_lbs, ub_input1=input1_ubs,
+                                lb_input2=input2_lbs, ub_input2=input2_ubs, device='cpu')
+                    delta_lbs, delta_ubs = diff_poly_ver.run()
                 self.difference_lbs_dict[(i, j)] = delta_lbs
                 self.difference_ubs_dict[(i, j)] = delta_ubs
             self.input_list.append(self.baseline_results[i].input)        

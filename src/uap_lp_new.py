@@ -62,7 +62,7 @@ class UAPLPtransformer:
             constraint_mat = self.constraint_matrices[i]
             final_var = self.gmdl.addMVar(constraint_mat.shape[1], lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, 
                                             name=f'final_var_{i}')
-            self.gmdl.addConstr(final_var == constraint_mat.T.numpy() @ self.gurobi_variables[-1]['vs'][i])
+            self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_variables[-1]['vs'][i])
             final_vars.append(final_var)
             final_var_min = self.gmdl.addVar(lb=-float('inf'), ub=float('inf'), 
                                                 vtype=grb.GRB.CONTINUOUS, 
@@ -114,7 +114,7 @@ class UAPLPtransformer:
         for i, constraint_mat in enumerate(self.constraint_matrices):
             final_var = self.gmdl.addMVar(constraint_mat.shape[1], lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, 
                                             name=f'final_var_{i}')
-            self.gmdl.addConstr(final_var == constraint_mat.T.numpy() @ self.gurobi_variables[-1]['vs'][i])
+            self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_variables[-1]['vs'][i])
             final_vars.append(final_var)
             final_var_min = self.gmdl.addVar(lb=-float('inf'), ub=float('inf'), 
                                                 vtype=grb.GRB.CONTINUOUS, 
@@ -175,14 +175,14 @@ class UAPLPtransformer:
         if len(self.xs) <= 0:
             return
         delta = self.gmdl.addMVar(self.xs[0].shape[0], lb = -self.eps, ub = self.eps, vtype=grb.GRB.CONTINUOUS, name='uap_delta')
-        vs = [self.gmdl.addMVar(self.xs[i].shape[0], lb = self.xs[i].numpy() - self.eps, ub = self.xs[i].numpy() + self.eps, vtype=grb.GRB.CONTINUOUS, name=f'input_{i}') for i in range(self.batch_size)]
+        vs = [self.gmdl.addMVar(self.xs[i].shape[0], lb = self.xs[i].detach().numpy() - self.eps, ub = self.xs[i].detach().numpy() + self.eps, vtype=grb.GRB.CONTINUOUS, name=f'input_{i}') for i in range(self.batch_size)]
         # ensure all inputs are perturbed by the same uap delta.
         for i, v in enumerate(vs):
-            self.gmdl.addConstr(v == self.xs[i].numpy() + delta)
-        # ds = [[self.gmdl.addMVar(self.xs[i].shape[0], lb= self.xs[i].numpy() - self.xs[j].numpy()-self.tolerence, ub=self.xs[i].numpy() - self.xs[j].numpy()+self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'input({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
+            self.gmdl.addConstr(v == self.xs[i].detach().numpy() + delta)
+        # ds = [[self.gmdl.addMVar(self.xs[i].shape[0], lb= self.xs[i].detach().numpy() - self.xs[j].detach().numpy()-self.tolerence, ub=self.xs[i].detach().numpy() - self.xs[j].detach().numpy()+self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'input({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
         # for i in range(self.batch_size):
         #     for j in range(i+1, self.batch_size):
-        #         self.gmdl.addConstr(ds[i][j - i -1] == self.xs[i].numpy() - self.xs[j].numpy())                
+        #         self.gmdl.addConstr(ds[i][j - i -1] == self.xs[i].detach().numpy() - self.xs[j].detach().numpy())                
         
         self.gurobi_variables.append({'delta': delta, 'vs': vs, 'ds': None})
 
@@ -222,8 +222,8 @@ class UAPLPtransformer:
     def create_linear_constraints(self, layer, layer_idx):
         weight, bias = layer.weight, layer.bias
        
-        weight = weight.numpy()
-        bias = bias.numpy()
+        weight = weight.detach().numpy()
+        bias = bias.detach().numpy()
         vs, ds = self.create_vars(layer_idx, 'linear')
         
         for v_idx, v in enumerate(vs):
@@ -243,8 +243,8 @@ class UAPLPtransformer:
         if self.track_differences is True:
             for i in range(self.batch_size):
                 for j in range(i+1, self.batch_size):
-                    self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].numpy() + self.tolerence))
-                    self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].numpy() - self.tolerence))
+                    self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].detach().numpy() + self.tolerence))
+                    self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].detach().numpy() - self.tolerence))
 
             for i in range(self.batch_size):
                 for j in range(i+1, self.batch_size):
@@ -382,8 +382,8 @@ class UAPLPtransformer:
         if self.track_differences is True:
             for i in range(self.batch_size):
                 for j in range(i+1, self.batch_size):
-                    self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].numpy() + self.tolerence))
-                    self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].numpy() - self.tolerence))
+                    self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].detach().numpy() + self.tolerence))
+                    self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].detach().numpy() - self.tolerence))
 
             for i in range(self.batch_size):
                 for j in range(i+1, self.batch_size):

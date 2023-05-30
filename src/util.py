@@ -367,8 +367,9 @@ def get_net(net_name, dataset, debug_mode=False):
     net_format = get_net_format(net_name)
     if net_format == 'pt':
         # Load the model
-        net_torch = get_torch_net(net_name, dataset)
-        net = parse.parse_torch_layers(net_torch)
+        with torch.no_grad():
+            net_torch = get_torch_net(net_name, dataset)
+            net = parse.parse_torch_layers(net_torch)
 
     elif net_format == 'onnx':
         net_onnx = onnx.load(net_name)
