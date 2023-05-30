@@ -102,9 +102,9 @@ class UapBasicLP:
         else:
             binary_vars = []
             for i, var_min in enumerate(self.prop_mins):
-                binary_vars.append(self.model.addVar(vtype=grb.GRB.BINARY, name=f'b{i}'))
-                # self.model.addConstr(binary_vars[idx] == (t_min >= 0))
-                BIG_M = 1e8
+                binary_vars.append(self.model.addVar(vtype=grb.GRB.BINARY, name=f'b{i}')) 
+                # BIG M formulation 
+                BIG_M = 1e11
 
                 # Force binary_vars[-1] to be '1' when t_min > 0
                 self.model.addConstr(BIG_M * binary_vars[-1] >= var_min)

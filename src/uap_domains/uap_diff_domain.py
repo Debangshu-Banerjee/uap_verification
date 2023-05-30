@@ -77,7 +77,8 @@ class UapDiff:
                                               eps=self.eps, x_lbs=self.input_lbs,
                                               x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
                                               d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
-                                              debug_mode=self.args.debug_mode)
+                                              debug_mode=self.args.debug_mode,
+                                              track_differences=self.args.track_differences)
         # Formulate the Lp problem.
         uap_lp_transformer.create_lp()
         verified_percentages = None

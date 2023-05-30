@@ -13,10 +13,10 @@ class TestBasicUap(TestCase):
         uap_verfication_args = uap_ver.UapAnalysisArgs(
             individual_prop_domain=Domain.DEEPZ,
             domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.MNIST, sink_label=None,
-            spec_type=InputSpecType.UAP, count=10, count_per_prop=10, eps=0.012, net=config.MNIST_FFN_L2,                                                                                                              
-            timeout=100, output_dir='results/', radius_l=0.002, radius_r=0.25, 
-            uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, 
-            no_lp_for_verified = True, debug_mode=False)
+            spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=0.04, net=config.MNIST_FFN_PGD,                                                                                                              
+            timeout=100, output_dir='results/', radius_l=0.002, radius_r=0.25,
+            uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+            no_lp_for_verified = True, debug_mode=False, track_differences=True)
         uap_ver.UapVerification(uap_verfication_args)
 
     def test_cifar_uap(self):

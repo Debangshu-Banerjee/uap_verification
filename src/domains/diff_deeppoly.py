@@ -93,8 +93,13 @@ class DiffDeepPoly:
         delta_lb_input2_coef = back_prop_struct.delta_lb_input2_coef.view((coef_shape[0], *postconv_shape))
         delta_ub_input2_coef = back_prop_struct.delta_ub_input2_coef.view((coef_shape[0], *postconv_shape))                        
         
-        delta_lb_bias = back_prop_struct.delta_lb_bias + (0 if conv_bias is None else (delta_lb_coef.sum((2, 3)) * conv_bias).sum(1))
-        delta_ub_bias = back_prop_struct.delta_ub_bias + (0 if conv_bias is None else (delta_ub_coef.sum((2, 3)) * conv_bias).sum(1))
+        # delta_lb_bias = back_prop_struct.delta_lb_bias + (0 if conv_bias is None else (delta_lb_coef.sum((2, 3)) * conv_bias).sum(1))
+        # delta_ub_bias = back_prop_struct.delta_ub_bias + (0 if conv_bias is None else (delta_ub_coef.sum((2, 3)) * conv_bias).sum(1))
+        delta_lb_bias = back_prop_struct.delta_lb_bias + (delta_lb_input1_coef.sum((2, 3)) * conv_bias).sum(1)
+        delta_lb_bias = delta_lb_bias + (delta_lb_input2_coef.sum((2, 3)) * conv_bias).sum(1)
+        delta_ub_bias = back_prop_struct.delta_ub_bias + (delta_ub_input1_coef.sum((2, 3)) * conv_bias).sum(1)
+        delta_ub_bias = delta_ub_bias + (delta_ub_input2_coef.sum((2, 3)) * conv_bias).sum(1)
+
 
         new_delta_lb_coef = F.conv_transpose2d(delta_lb_coef, conv_weight, None, stride, padding,
                                            output_padding, groups, dilation)
@@ -428,7 +433,7 @@ class DiffDeepPoly:
                                      bias=curr_layer.bias, back_prop_struct=back_prop_struct)
                linear_layer_index -= 1
             elif curr_layer.type is LayerType.Conv2D:
-                back_prop_struct = self.handle_conv(conv_weight=curr_layer.weight, conv_bias=None, 
+                back_prop_struct = self.handle_conv(conv_weight=curr_layer.weight, conv_bias=curr_layer.bias, 
                                         back_prop_struct=back_prop_struct, 
                                         preconv_shape=self.shapes[linear_layer_index], postconv_shape=self.shapes[linear_layer_index + 1],
                                         stride=curr_layer.stride, padding=curr_layer.padding, dilation=curr_layer.dilation)

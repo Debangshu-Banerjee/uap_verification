@@ -17,7 +17,8 @@ class UapAnalysisArgs:
                  spec_type=InputSpecType.UAP, count=None, count_per_prop=2, 
                  eps=0.01, net='', timeout=30, output_dir='', radius_l=0.1, 
                  radius_r=0.3, uap_mode=UAPMode.RADIUS, cutoff_percentage = 0.5,
-                 compute_proportion=False, no_lp_for_verified=False, no_file = False, debug_mode=False) -> None:
+                 compute_proportion=False, no_lp_for_verified=False, write_file = False, 
+                 debug_mode=False, track_differences=True) -> None:
         self.individual_prop_domain = individual_prop_domain
         self.domain = domain
         self.baseline_domain = baseline_domain
@@ -37,8 +38,9 @@ class UapAnalysisArgs:
         self.cutoff_percentage = cutoff_percentage
         self.compute_proportion = compute_proportion
         self.no_lp_for_verified = no_lp_for_verified
-        self.no_file = no_file
+        self.write_file = write_file
         self.debug_mode = debug_mode
+        self.track_differences = track_differences
         # if debug mode on rewrite params
         if debug_mode == True:
             self.count = 1
@@ -80,11 +82,11 @@ def UapVerificationBackend(props, uap_verification_args):
         print("\n\n ***** verifying property ***** \n\n")
         props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop] 
         # new_prop = deepcopy(props[0])
-        # new_prop.update_input(eps=0.2)       
+        # new_prop.update_input(eps=0.1)       
         # props_to_analyze = [props[0], new_prop]
         uap_analyzer = UAPAnalyzerBackendWrapper(props=props_to_analyze, args=uap_verification_args)
         # run the uap verification
         res = uap_analyzer.run()
         uap_result_list.add_results(res)
-    if uap_verification_args.no_file == True:
+    if uap_verification_args.write_file == True:
        uap_result_list.analyze(uap_verification_args)
