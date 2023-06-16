@@ -62,6 +62,7 @@ MNIST_STANDARD_MODIFIED = "mnist_standard_modified.pt"
 MNIST_LINEAR_50 = "mnist_relu_3_50.onnx"
 MNIST_LINEAR_100 = "mnist_relu_3_100.onnx"
 MNIST_LINEAR_5_100 = "mnist_relu_5_100.onnx"
+MNIST_BINARY = "mnist_binary.onnx"
 
 
 # MNIST crown-ibp network

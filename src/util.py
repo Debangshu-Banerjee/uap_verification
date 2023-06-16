@@ -351,14 +351,11 @@ def prune_last_layer(weight, indices):
 
 def get_debug_network():
     network = []
-    weight1 = torch.tensor([[2, -1], [3, -1]], dtype=torch.float)
+    weight1 = torch.tensor([[1, -1], [-2, 1]], dtype=torch.float)
     weight2 = torch.tensor([[1, -1], [-1, 1]], dtype=torch.float)
-    weight3 = torch.tensor([[1, 0], [0, 1]], dtype=torch.float)
     network.append(Layer(weight=weight1, bias=torch.zeros(2), type=LayerType.Linear))
     network.append(Layer(type=LayerType.ReLU))
     network.append(Layer(weight=weight2, bias=torch.zeros(2), type=LayerType.Linear))
-    network.append(Layer(type=LayerType.ReLU))
-    network.append(Layer(weight=weight3, bias=torch.zeros(2), type=LayerType.Linear))
     return network
 
 def get_net(net_name, dataset, debug_mode=False):

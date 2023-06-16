@@ -39,6 +39,9 @@ class UAPLPtransformer:
             self.shape = (1, 28, 28)
         elif self.input_size == 3072:
             self.shape = (3, 32, 32)
+        # For debug input.
+        elif self.input_size == 2:
+            self.shape = (1, 1, 2)
         else:
             raise ValueError("Unsupported dataset!")
 
@@ -122,6 +125,7 @@ class UAPLPtransformer:
             self.gmdl.addGenConstrMin(final_var_min, final_var.tolist())
             final_min_vars.append(final_var_min)
             bs.append(self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{i}'))
+
             # Binary encoding (Big M formulation )
             BIG_M = 1e11
 

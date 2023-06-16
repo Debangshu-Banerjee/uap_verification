@@ -241,6 +241,21 @@ def process_input_for_sink_label(inputs, labels, sink_label, target_count=0):
     new_labels = torch.stack(new_labels)
     return new_inputs, new_labels
 
+
+def process_input_for_binary(inputs, labels, target_count=0):
+    new_inputs = []
+    new_labels = []
+    count = 0
+    binary_label = [0, 1]
+    for i in range(len(inputs)):
+        if labels[i] in binary_label and count < target_count:
+            new_inputs.append(inputs[i])
+            new_labels.append(labels[i])
+            count += 1
+    new_inputs = torch.stack(new_inputs)
+    new_labels = torch.stack(new_labels)
+    return new_inputs, new_labels
+
 def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_label=None, debug_mode=False):
     if debug_mode == True:
         return generate_debug_specs(count=count, eps=eps)
@@ -275,6 +290,11 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_
             inputs, labels = process_input_for_sink_label(inputs=inputs, labels=labels, 
                                                           sink_label=sink_label, target_count=count)
             props = get_targeted_UAP_spec(inputs, eps, dataset, sink_label=torch.tensor(sink_label))
+        elif spec_type == InputSpecType.UAP_BINARY:
+            testloader = prepare_data(dataset, batch_size=12*count)
+            inputs, labels = next(iter(testloader))
+            inputs, labels = process_input_for_binary(inputs=inputs, labels=labels, target_count=count)
+            props = get_binary_uap_spec(inputs=inputs, labels=labels, eps=eps, dataset=dataset)   
         return props, inputs
     elif dataset == Dataset.ACAS:
         return get_acas_props(count), None
@@ -294,11 +314,11 @@ def generate_debug_specs(count=2, eps=1.0):
     inputs = []
     props = []
     for i in range(count):
-        t = torch.rand(2)
+        t = torch.zeros(2)
         if i % 2 == 0:
-            t += torch.tensor([10, 17])
+            t += torch.tensor([14, 11])
         else:
-            t += torch.tensor([17, 10])
+            t += torch.tensor([12, 14])
         inputs.append(t)
     for i, input in enumerate(inputs):
         ilb = input - eps
@@ -334,6 +354,28 @@ def get_linf_spec(inputs, labels, eps, dataset):
 
     return properties
 
+def get_binary_uap_spec(inputs, labels, eps, dataset):
+    properties = []
+
+    for i in range(len(inputs)):
+        image = inputs[i]
+
+        ilb = image - eps
+        iub = image + eps
+
+        mean, std = get_mean_std(dataset)
+
+        ilb = (ilb - mean) / std
+        iub = (iub - mean) / std
+        image = (image - mean) / std
+
+        ilb = ilb.reshape(-1)
+        iub = iub.reshape(-1)
+
+        out_constr = Constraint(OutSpecType.LOCAL_ROBUST, label=labels[i], is_binary=True)
+        properties.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset, input=image))
+
+    return properties
 
 
 def get_targeted_UAP_spec(inputs, eps, dataset, sink_label):

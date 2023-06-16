@@ -45,7 +45,7 @@ class UapAnalysisArgs:
         if debug_mode == True:
             self.count = 1
             self.count_per_prop = 2
-            self.eps = 0.2
+            self.eps = 3.0
             self.net_name = 'debug.net'
             self.net = 'debug.net'
 

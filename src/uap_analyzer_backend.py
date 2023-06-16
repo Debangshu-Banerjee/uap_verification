@@ -5,6 +5,7 @@ from src.common import Status, Domain
 from src.domains.domain_transformer import domain_transformer
 from src.baseline_uap_verifier import BaselineAnalyzerBackend
 from src.uap_domains.uap_domain_transformer import get_uap_domain_transformer
+from src.common.network import LayerType
 import time
 
 
@@ -29,6 +30,19 @@ class UAPAnalyzerBackendWrapper:
         baseline_verfier = BaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
         baseline_result = baseline_verfier.run()
         return None
+    
+
+    # def check_accuracy(self):
+    #     with torch.no_grad():
+    #         for i, prop in enumerate(self.props):
+    #             input = prop.get_input_clause(0).input
+    #             print(f'output matrix {prop.get_input_clause(0).out_constr.constr_mat} \n\n')
+    #             for layer in self.net:
+    #                 if layer.type == LayerType.Linear:
+    #                     input = layer.weight @ input + layer.bias
+    #                 elif layer.type == LayerType.ReLU:
+    #                     input = torch.maximum(input, torch.zeros(input.size()))
+    #             print(f'Property {i} network output {prop.get_input_clause(0).out_constr.constr_mat[0] @ input}')
     
     def run(self) -> UAPResult:
         # Baseline results correspond to running each property individually.

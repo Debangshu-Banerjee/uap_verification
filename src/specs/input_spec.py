@@ -16,6 +16,7 @@ class InputSpecType(Enum):
     GLOBAL = 3
     UAP = 4
     UAP_TARGETED = 5
+    UAP_BINARY = 6
 
 def get_mean_std(dataset):
     if dataset == Dataset.MNIST:

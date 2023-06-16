@@ -12,25 +12,27 @@ class OutSpecType(Enum):
 # Where constr_mat = (A, B)
 class Constraint:
     def __init__(self, constr_type, is_conjunctive=True, constr_mat=None, 
-                 label=None, sink_label=None, debug_mode=False):
+                 label=None, sink_label=None, debug_mode=False, is_binary=False):
         self.constr_type = constr_type
         self.label = label
         self.constr_mat = constr_mat
         self.is_conjunctive = is_conjunctive
         mat = None
-        if debug_mode == True:
+        if debug_mode is True or is_binary is True:
             if self.label == 0:
-                mat = torch.tensor([[1.0, -1.0], [1.0, -1.0]])
+                mat = torch.tensor([[1.0], [-1.0]])
             else:
-                mat = torch.tensor([[-1.0, 1.0], [-1.0, 1.0]])
+                mat = torch.tensor([[-1.0], [1.0]])
             self.constr_mat = (mat, 0)
-        if constr_type == OutSpecType.LOCAL_ROBUST and debug_mode == False:
+        if constr_type == OutSpecType.LOCAL_ROBUST and debug_mode == False and is_binary is False:
             if label is not None:
                 mat = create_out_constr_matrix(label) 
             elif sink_label is not None:
                 mat = create_out_targeted_uap_matrix(sink_label)
             else:
                 raise ValueError("Label or Sink Label has to be not None")
+            print("Label ", self.label)
+            print("Matrix shape", mat)
             self.constr_mat = (mat, 0)
             
 def create_out_constr_matrix(label):
