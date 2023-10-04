@@ -3,6 +3,7 @@ from torch.nn import functional as F
 from src.baseline_uap_verifier_res import BaselineVerifierRes
 from src.sparsification_util import get_sparsification_indices, prune_last_layer
 from copy import deepcopy
+from src.specs.out_spec import create_out_constr_matrix
 
 device = 'cpu'
 
@@ -14,9 +15,11 @@ class ZonoTransformer:
         iub: the upper bound for the input variables
         """
         self.size = prop.get_input_size()
+        #print(self.size)
         self.prop = prop
         self.ilb = prop.input_lb
         self.iub = prop.input_ub
+        self.eps = torch.sum(self.iub - self.ilb)
         self.complete = complete
         # A map that keeps tracks of the scaling factor of the perturbation
         # bound for each index. Currently the perturbation bound is only defined
@@ -26,7 +29,7 @@ class ZonoTransformer:
         # Following fields are used for complete verification
         self.complete = complete
         self.map_for_noise_indices = {}
-
+        
         if self.size == 784:
             self.shape = (1, 28, 28)
         elif self.size == 3072:
@@ -35,6 +38,7 @@ class ZonoTransformer:
             # For debug network
             self.shape = (1, 1, 2)
 
+
         self.ilb = self.ilb.to(device)
         self.iub = self.iub.to(device)
 
@@ -42,10 +46,9 @@ class ZonoTransformer:
         self.unstable_relus = []
         self.active_relus = []
         self.inactive_relus = []        
-        noise_ind = self.get_noise_indices()
-
-        cof = ((self.iub - self.ilb) / 2 * torch.eye(self.size))[noise_ind]
-
+        self.noise_ind = self.get_noise_indices()
+        cof = ((self.iub - self.ilb) / 2 * torch.eye(self.size))[self.noise_ind]
+        #print(self.size, self.iub.shape, cof.shape, noise_ind)
         self.centers = []
         self.cofs = []
         self.linear_centers = []
@@ -56,6 +59,10 @@ class ZonoTransformer:
         # the final layer weight matrix
         self.final_layer_without_constr_center = None
         self.final_layer_without_constr_coef = None
+        
+        self.targeted = prop.targeted
+        self.targeted_centers = None
+        self.targeted_coef = None
 
         self.set_zono(center, cof)
 
@@ -63,12 +70,32 @@ class ZonoTransformer:
     
     def populate_baseline_verifier_result(self):
         final_lb = self.compute_lb()
+        final_ub = self.compute_ub()
+        if self.targeted:
+            target_ubs = self.compute_target_ubs()
+        else:
+            target_ubs = None
+        #print(f'output: {self.prop.output_constr_mat()}')
+        #print(f'test: {torch.tensor([1.0, 2, 3, 4, 5, 6, 7, 100, 9, 10]) @ self.prop.output_constr_mat()}')
+        # print(f'linear centers: {self.linear_centers}')
+        # print(f'linear coefs: {self.linear_coefs}')
         layer_lbs, layer_ubs = self.get_all_linear_bounds_wt_constraints()
         layer_lbs.append(self.ilb)
         layer_ubs.append(self.iub)
+        
+        # print(f'layer lbs: {layer_lbs[2]}')
+        # print(f'layer ubs: {layer_ubs[2]}')
+        # print(self.final_layer_without_constr_center)
+        # print(self.final_layer_without_constr_coef)
+        # print(torch.sum(torch.abs(self.final_layer_without_constr_coef), dim=0))
+        # print(self.get_all_bounds()[0])
+        # print(self.get_all_bounds()[1])
+        # print(f'final centers: {self.centers[-1]}')
+        # print(f'final coefs: {self.cofs[-1]}')
+        # print(f'final coefs sum: {torch.sum(torch.abs(self.cofs[-1]), dim=0)}')
         coef, center = self.final_coef_center()
-        return BaselineVerifierRes(input=self.prop.input, layer_lbs=layer_lbs, layer_ubs=layer_ubs, final_lb=final_lb,
-                                   zono_center=center, zono_coef=coef)
+        return BaselineVerifierRes(input=self.prop.input, layer_lbs=layer_lbs, layer_ubs=layer_ubs, final_lb=final_lb, final_ub = final_ub,
+                                   zono_center=center, zono_coef=coef, target_ubs=target_ubs, target_centers = self.targeted_centers, target_coefs = self.targeted_coef, noise_ind = self.noise_ind, eps = self.eps)
 
 
     def get_noise_indices(self):
@@ -86,7 +113,15 @@ class ZonoTransformer:
         coef = self.cofs[-1]
         return coef, center
 
-
+    def compute_target_ubs(self):
+        target_ubs = []
+        for i in range(10):
+            cof = self.targeted_coef[i]
+            center = self.targeted_centers[i]
+            cof_abs = torch.sum(torch.abs(cof), dim=0)
+            ub = center + cof_abs
+            target_ubs.append(ub)
+        return target_ubs
 
     def compute_lb(self, adv_label=None, complete=False, center=None, cof=None):
         """
@@ -109,6 +144,7 @@ class ZonoTransformer:
             return lb, True, None
         else:
             cof_abs = torch.sum(torch.abs(cof), dim=0)
+            #print(center, cof_abs)
             lb = center - cof_abs
             return lb
 
@@ -216,20 +252,6 @@ class ZonoTransformer:
             return None
         else:
             return self.perturbation_scaling[layer_index]
-    
-
-    # Populate the scaling factor for perturbation for different
-    # index.
-    def populate_perturbation_scaling_factor(self, last_layer_wt, output_specification_mat):
-        if output_specification_mat is None:
-            self.perturbation_scaling[-1] = None
-        else:
-            # self.perturbation_scaling[-1] = torch.max(torch.norm(output_specification_mat, dim=0))
-            self.perturbation_scaling[-1] = 1.0
-        if last_layer_wt is None:
-            self.perturbation_scaling[-2] = None
-        else:
-            self.perturbation_scaling[-2] = torch.max(torch.norm(last_layer_wt, dim=0))
 
 
     def verify_property_with_pruned_layer(self, pruned_final_layer, adv_label, complete):
@@ -322,6 +344,19 @@ class ZonoTransformer:
         self.set_zono(center, cof)
         return self
 
+    # Populate the scaling factor for perturbation for different
+    # index.
+    def populate_perturbation_scaling_factor(self, last_layer_wt, output_specification_mat):
+        if output_specification_mat is None:
+            self.perturbation_scaling[-1] = None
+        else:
+            # self.perturbation_scaling[-1] = torch.max(torch.norm(output_specification_mat, dim=0))
+            self.perturbation_scaling[-1] = 1.0
+        if last_layer_wt is None:
+            self.perturbation_scaling[-2] = None
+        else:
+            self.perturbation_scaling[-2] = torch.max(torch.norm(last_layer_wt, dim=0))
+
     def handle_linear(self, layer, last_layer=False):
         """
         handle linear layer
@@ -331,17 +366,36 @@ class ZonoTransformer:
         if last_layer:
             org_weight = weight
             org_bias = bias
+            #print(self.prop.output_constr_mat())
             weight = weight @ self.prop.output_constr_mat()
+            #print(f'original {weight.shape}')
             bias = bias @ self.prop.output_constr_mat() + self.prop.output_constr_const()
+            #print(self.prop.output_constr_const())
             self.populate_perturbation_scaling_factor(weight, self.prop.output_constr_mat())
             # print("output bias", bias)
         self.shape = (1, weight.shape[1])
         self.size = weight.shape[1]
 
         prev_cent, prev_cof = self.get_zono()
-
+        if self.targeted:
+            if last_layer:
+                self.targeted_centers = []
+                self.targeted_coef = []
+                for i in range(10):
+                    constr_mat_i = create_out_constr_matrix(torch.tensor(i))
+                    tar_weight = org_weight @ constr_mat_i
+                    #print(tar_weight.shape)
+                    tar_bias = org_bias @ constr_mat_i
+                    tar_center = prev_cent @ tar_weight + tar_bias
+                    tar_cof = prev_cof @ tar_weight
+                    #print(f'test_center: {tar_center.shape}')
+                    #print(f'test_coef: {tar_cof.shape}')
+                    self.targeted_centers.append(tar_center)
+                    self.targeted_coef.append(tar_cof)
+        
         center = prev_cent @ weight + bias
         cof = prev_cof @ weight
+
 
         if last_layer:
             self.final_layer_without_constr_center = prev_cent @ org_weight + org_bias
@@ -458,6 +512,7 @@ class ZonoTransformer:
             center = prev_cent * active_relus + (lmbda * prev_cent + mu) * ambiguous_relus
 
         self.set_zono(center, cof)
+        #print(f'test: {center, cof}')
         return self
 
     def verify_robustness(self, y, true_label):

@@ -3,12 +3,15 @@ import torch
 from torch import nn
 from src.common.network import Network, LayerType
 import numpy as np
+from time import time
+from src.specs.out_spec import create_out_constr_matrix, create_out_targeted_uap_matrix
 
 class UAPLPtransformer:
     def __init__(self, mdl, xs, eps, x_lbs, x_ubs, d_lbs, d_ubs, 
-                 constraint_matrices, debug_mode=False, track_differences=True):
+                 constraint_matrices, debug_mode=False, track_differences=True, props = None, monotone = False):
         self.mdl = mdl
         self.xs = xs
+        #print(xs)
         self.batch_size = len(xs)
         self.input_size = None
         self.shape = None
@@ -33,6 +36,10 @@ class UAPLPtransformer:
         self.tolerence = 2*1e-1
         self.debug_mode = debug_mode
         self.track_differences = track_differences
+        self.constraint_time = None
+        self.optimize_time = None
+        self.props = props
+        self.monotone = monotone
     
     def set_shape(self):
         if self.input_size == 784:
@@ -42,18 +49,25 @@ class UAPLPtransformer:
         # For debug input.
         elif self.input_size == 2:
             self.shape = (1, 1, 2)
+        elif self.input_size == 12:
+            self.shape = (1, 1, 12)
         else:
             raise ValueError("Unsupported dataset!")
 
 
 
     def create_lp(self):
+        #print(self.batch_size)
         if self.batch_size <= 0:
             return
         self.debug_log_file = open(self.debug_log_filename, 'w+')
         self.gmdl.setParam('OutputFlag', False)
-        self.gmdl.setParam('TimeLimit', 12*60)
+        #self.gmdl.setParam('Threads', 4)
+        self.gmdl.setParam('TimeLimit', 5*60)
+        #print('hi')
+        self.constraint_time = - time()
         self.create_constraints()
+        #print('hi')
 
     def optimize_lp(self):
         assert len(self.constraint_matrices) == self.batch_size
@@ -79,8 +93,11 @@ class UAPLPtransformer:
         if self.debug_mode == True:
             self.gmdl.write("./debug_logs/model.lp")
             # self.gmdl.write("./debug_logs/out.sol")
-        
+        #print('hi')
+        self.constraint_time += time()
+        self.optimize_time = - time()
         self.gmdl.optimize()
+        self.optimize_time += time()
         if self.gmdl.status == 2:
             self.debug_log_file.write(f"Problem min {problem_min.X}\n")
             # print(f"Problem min {problem_min.X}\n")
@@ -105,7 +122,206 @@ class UAPLPtransformer:
                 self.gmdl.write("model.ilp") 
                 self.debug_log_file.close()   
                 return NotImplementedError
-        
+    
+    def optimize_mono(self, monotonic_inv = False):
+        #print(self.gurobi_variables[-1]['ds'])
+        p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f'diff')
+        self.gmdl.addConstr(p == self.gurobi_variables[-1]['vs'][0] - self.gurobi_variables[-1]['vs'][1])
+        if not monotonic_inv:
+            self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
+        else:
+            self.gmdl.setObjective(p, grb.GRB.MAXIMIZE)
+
+        # p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f'diff')
+        # self.gmdl.addConstr(p == grb.quicksum(self.gurobi_variables[-1]['ds'][0]))
+        # self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
+            # self.gmdl.write("./debug_logs/out.sol")
+        #print('hi')
+        self.constraint_time += time()
+        self.optimize_time = - time()
+        self.gmdl.optimize()
+        self.optimize_time += time()
+        self.debug_log_file.close()
+        if self.gmdl.status == 2:
+            #self.debug_log_file.write(f"Problem min {p.X}\n")
+            # print(f"Problem min {problem_min.X}\n")
+            #self.debug_log_file.close()
+            return p.X
+        else:
+            if self.gmdl.status == 4:
+                self.gmdl.setParam('PreDual',0)
+                self.gmdl.setParam('DualReductions', 0)
+                self.gmdl.optimize()
+            elif self.gmdl.status == 13 or self.gmdl.status == 9:
+                print("Suboptimal solution")
+                #self.debug_log_file.close()
+                if self.gmdl.SolCount > 0:
+                    return p.X
+                else:
+                    return 0.0
+            print("Gurobi gmndl status", self.gmdl.status)
+            #self.debug_log_file.close()
+            if self.gmdl.status == 3:
+                #orignumvars = self.gmdl.NumVars
+                #self.gmdl.feasRelaxS(1, False, False, True) 
+                #self.gmdl.optimize()
+                #slacks = self.gmdl.getVars()[orignumvars:]
+                # for sv in slacks:
+                #     if sv.X > 1e-9:
+                #         print('%s = %g' % (sv.VarName, sv.X))
+                # print(p.X)
+                self.gmdl.computeIIS()
+                self.gmdl.write("model.ilp") 
+                #self.debug_log_file.close()   
+                return NotImplementedError
+
+    def optimize_monotone(self, monotone):
+        binary_vars = []
+        #print(self.gurobi_variables)
+        #print(len(self.gurobi_variables[-1]['vs']))
+        for i in range(int(len(self.gurobi_variables[-1]['vs'])/2)):
+            #print(self.gurobi_variables[-1]['vs'][i])
+            #print(self.gurobi_variables[-1]['vs'][2*i])
+            b_up = self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{i}_upper')
+            b_low = self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{i}_lower')
+            # BIG M formulation 
+            BIG_M = 1e11
+
+            # Force binary_vars[-1] to be '1' when t_min > 0
+            self.gmdl.addConstr(BIG_M * b_up >= self.gurobi_variables[-1]['vs'][2*i] - monotone[2*i])
+            # Force binary_vars[-1] to be '0' when t_min < 0 or -t_min  > 0
+            self.gmdl.addConstr(BIG_M * (b_up - 1) <= self.gurobi_variables[-1]['vs'][2*i] - monotone[2*i])
+
+            # Force binary_vars[-1] to be '1' when t_min > 0
+            self.gmdl.addConstr(BIG_M * b_low >= monotone[2*i + 1] - self.gurobi_variables[-1]['vs'][2*i + 1])
+            # Force binary_vars[-1] to be '0' when t_min < 0 or -t_min  > 0
+            self.gmdl.addConstr(BIG_M * (b_low - 1) <= monotone[2*i + 1] - self.gurobi_variables[-1]['vs'][2*i + 1])
+            b = self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{i}')
+            self.gmdl.addConstr(b == grb.and_(b_up, b_low))
+            binary_vars.append(b)
+
+        p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name='p')
+        self.gmdl.addConstr(p == grb.quicksum(binary_vars[i] for i in range(len(binary_vars))) / len(binary_vars))
+        # self.model.reset()
+        self.gmdl.update()
+        self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
+        if self.debug_mode == True:
+            self.gmdl.write("./debug_logs/model.lp")
+            # self.gmdl.write("./debug_logs/out.sol")
+        #print('hi')
+        self.constraint_time += time()
+        self.optimize_time = - time()
+        self.gmdl.optimize()
+        self.optimize_time += time()
+        if self.gmdl.status == 2:
+            self.debug_log_file.write(f"Problem min {p.X}\n")
+            # print(f"Problem min {problem_min.X}\n")
+            self.debug_log_file.close()
+            return p.X
+        else:
+            if self.gmdl.status == 4:
+                self.gmdl.setParam('PreDual',0)
+                self.gmdl.setParam('DualReductions', 0)
+                self.gmdl.optimize()
+            elif self.gmdl.status == 13 or self.gmdl.status == 9:
+                print("Suboptimal solution")
+                self.debug_log_file.close()
+                if self.gmdl.SolCount > 0:
+                    return p.X
+                else:
+                    return 0.0
+            print("Gurobi gmndl status", self.gmdl.status)
+            self.debug_log_file.close()
+            if self.gmdl.status == 3:
+                #orignumvars = self.gmdl.NumVars
+                #self.gmdl.feasRelaxS(1, False, False, True) 
+                #self.gmdl.optimize()
+                #slacks = self.gmdl.getVars()[orignumvars:]
+                # for sv in slacks:
+                #     if sv.X > 1e-9:
+                #         print('%s = %g' % (sv.VarName, sv.X))
+                # print(p.X)
+                self.gmdl.computeIIS()
+                self.gmdl.write("model.ilp") 
+                self.debug_log_file.close()   
+                return NotImplementedError
+
+    def optimize_targeted(self):
+        percentages = []
+        bin_sizes = []
+        for j in range(10):
+            bs = []
+            final_vars = []
+            final_min_vars = []
+            constraint_mat = create_out_targeted_uap_matrix(torch.tensor(j))
+            for i, _ in enumerate(self.constraint_matrices):
+                if self.props[i].out_constr.label == j:
+                    continue
+                final_var = self.gmdl.addMVar(constraint_mat.shape[1], lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, 
+                                                name=f'final_var_{i}')
+                self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_variables[-1]['vs'][i])
+                final_vars.append(final_var)
+                final_var_max = self.gmdl.addVar(lb=-float('inf'), ub=float('inf'), 
+                                                    vtype=grb.GRB.CONTINUOUS, 
+                                                    name=f'final_var_min_{i}')
+                self.gmdl.addGenConstrMax(final_var_max, final_var.tolist())
+                final_min_vars.append(final_var_max)
+                bs.append(self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{i}'))
+
+                # Binary encoding (Big M formulation )
+                BIG_M = 1e11
+
+                # Force bs[-1] to be '1' when t_min > 0
+                self.gmdl.addConstr(BIG_M * bs[-1] >= final_var_max)
+
+                # Force bs[-1] to be '0' when t_min < 0 or -t_min  > 0
+                self.gmdl.addConstr(BIG_M * (bs[-1] - 1) <= final_var_max)
+            
+            p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f'p')
+            self.gmdl.addConstr(p == grb.quicksum(bs[i] for i in range(len(bs))) / len(bs))
+            # self.gmdl.reset()
+            self.gmdl.update()
+            self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
+            
+            self.constraint_time += time()
+            self.optimize_time = - time()
+            self.gmdl.optimize()
+            self.optimize_time += time()
+            self.constraint_time -= time()
+            
+            if self.debug_mode is True:
+                print("Here")
+                self.gmdl.write("./debug_logs/model.lp")
+                # self.gmdl.write("./debug_logs/out.sol")
+            
+            if self.gmdl.status == 2:
+                self.debug_log_file.write(f"proportion {p.X}\n")
+                # print(f"verified proportion {p.X}\n")
+                percentages.append(p.X)
+                bin_sizes.append(len(bs))
+            else:
+                if self.gmdl.status == 4:
+                    self.gmdl.setParam('PreDual',0)
+                    self.gmdl.setParam('DualReductions', 0)
+                    self.gmdl.optimize()
+                elif self.gmdl.status == 13 or self.gmdl.status == 9:
+                    print("Suboptimal solution")
+                    if self.gmdl.SolCount > 0:
+                        percentages.append(p.X)
+                        bin_sizes.append(len(bs))
+                    else:
+                        percentages.append(0.0)
+                        bin_sizes.append(len(bs))
+                # self.debug_log_file.close()    
+                # print("Gurobi model status", self.gmdl.status)
+                # print("The optimization failed\n")
+                # print("Computing computeIIS")
+                # self.gmdl.computeIIS()
+                # print("Computing computeIIS finished")            
+                # self.gmdl.write("model.ilp")
+                # return NotImplementedError 
+        self.debug_log_file.close() 
+        return percentages, bin_sizes
     
     def optimize_milp_percent(self):
         assert len(self.constraint_matrices) == self.batch_size
@@ -140,7 +356,11 @@ class UAPLPtransformer:
         # self.gmdl.reset()
         self.gmdl.update()
         self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
+        
+        self.constraint_time += time()
+        self.optimize_time = - time()
         self.gmdl.optimize()
+        self.optimize_time += time()
         
         if self.debug_mode is True:
             print("Here")
@@ -181,8 +401,9 @@ class UAPLPtransformer:
         delta = self.gmdl.addMVar(self.xs[0].shape[0], lb = -self.eps, ub = self.eps, vtype=grb.GRB.CONTINUOUS, name='uap_delta')
         vs = [self.gmdl.addMVar(self.xs[i].shape[0], lb = self.xs[i].detach().numpy() - self.eps, ub = self.xs[i].detach().numpy() + self.eps, vtype=grb.GRB.CONTINUOUS, name=f'input_{i}') for i in range(self.batch_size)]
         # ensure all inputs are perturbed by the same uap delta.
-        for i, v in enumerate(vs):
-            self.gmdl.addConstr(v == self.xs[i].detach().numpy() + delta)
+        if not self.monotone:
+            for i, v in enumerate(vs):
+                self.gmdl.addConstr(v == self.xs[i].detach().numpy() + delta)
         # ds = [[self.gmdl.addMVar(self.xs[i].shape[0], lb= self.xs[i].detach().numpy() - self.xs[j].detach().numpy()-self.tolerence, ub=self.xs[i].detach().numpy() - self.xs[j].detach().numpy()+self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'input({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
         # for i in range(self.batch_size):
         #     for j in range(i+1, self.batch_size):
@@ -195,6 +416,7 @@ class UAPLPtransformer:
         layers = self.mdl
         for layer_idx, layer in enumerate(layers):
             layer_type = self.get_layer_type(layer)
+            #print('working on layer ', layer_idx, ' ', layer_type)
             if layer_type == LayerType.Linear:
                 self.linear_layer_idx += 1
                 self.create_linear_constraints(layer, layer_idx)

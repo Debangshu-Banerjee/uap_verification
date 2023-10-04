@@ -3,9 +3,9 @@ from src.specs.out_spec import OutSpecType
 
 
 class Property:
-    def __init__(self, input_lbs, input_ubs, inp_type, out_constr, dataset, input=None):
+    def __init__(self, input_lbs, input_ubs, inp_type, out_constr, dataset, input=None, targeted=False, monotone=False, monotone_prop = None):
         if inp_type in [InputSpecType.LINF, InputSpecType.UAP]:
-            self.input_props = [InputProperty(input_lbs, input_ubs, out_constr, dataset, input=input)]
+            self.input_props = [InputProperty(input_lbs, input_ubs, out_constr, dataset, input=input, targeted = targeted, monotone = monotone, monotone_prop = monotone_prop)]
         # Since the properties in this case can be conjunctive
         elif inp_type == InputSpecType.PATCH:
             self.input_props = []
@@ -22,6 +22,10 @@ class Property:
         self.inp_type = inp_type
         self.out_constr = out_constr
         self.dataset = dataset
+        self.targeted = targeted
+        self.monotone = monotone
+        self.monotone_prop = monotone_prop
+        self.input = input
 
     def update_input(self, eps):
         self.input_props[0].update_input(eps=eps)

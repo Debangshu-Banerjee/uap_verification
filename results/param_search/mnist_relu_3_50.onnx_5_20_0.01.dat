@@ -1,0 +1,149 @@
+
+Property No. 0
+
+individual verified proportion 1.0
+baseline verified proportion 1.0
+Uap verified proportion 1.0
+Times: [22.510013103485107, 1.761014461517334, 0.0011014938354492188, None, None]
+
+Property No. 1
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [22.608280181884766, 2.094503402709961, 2.5507779121398926, 2.4313759803771973, 0.11282825469970703]
+
+Property No. 2
+
+individual verified proportion 1.0
+baseline verified proportion 1.0
+Uap verified proportion 1.0
+Times: [23.048017501831055, 0.3022749423980713, 0.0003063678741455078, None, None]
+
+Property No. 3
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [21.843108415603638, 0.757265567779541, 1.5821325778961182, 0.9275288581848145, 0.6441807746887207]
+
+Property No. 4
+
+individual verified proportion 1.0
+baseline verified proportion 1.0
+Uap verified proportion 1.0
+Times: [21.34269881248474, 0.9661633968353271, 0.00031757354736328125, None, None]
+
+Property No. 5
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [17.44173765182495, 0.7748904228210449, 1.757495403289795, 1.285886287689209, 0.4088919162750244]
+
+Property No. 6
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [21.1994845867157, 0.16921710968017578, 1.2069809436798096, 0.44719529151916504, 0.7065689563751221]
+
+Property No. 7
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [17.372751474380493, 0.8652739524841309, 1.6886177062988281, 1.269535779953003, 0.40390777587890625]
+
+Property No. 8
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [16.79990530014038, 1.5640852451324463, 1.9199512004852295, 1.131019115447998, 0.74257493019104]
+
+Property No. 9
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [14.705029726028442, 1.4533534049987793, 1.0959053039550781, 0.5478503704071045, 0.5453047752380371]
+
+Property No. 10
+
+individual verified proportion 1.0
+baseline verified proportion 1.0
+Uap verified proportion 1.0
+Times: [12.087010145187378, 1.061689853668213, 0.0004062652587890625, None, None]
+
+Property No. 11
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 1.0
+Times: [12.209294319152832, 0.8954107761383057, 1.9652924537658691, 1.1824963092803955, 0.7308924198150635]
+
+Property No. 12
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [10.40744161605835, 0.6727368831634521, 2.0181615352630615, 0.8906733989715576, 1.1236448287963867]
+
+Property No. 13
+
+individual verified proportion 0.6000000238418579
+baseline verified proportion 0.6000000000000001
+Uap verified proportion 0.6
+Times: [10.422342777252197, 0.21021008491516113, 14.609057188034058, 1.5686206817626953, 1.2289979457855225]
+
+Property No. 14
+
+individual verified proportion 1.0
+baseline verified proportion 1.0
+Uap verified proportion 1.0
+Times: [12.139452457427979, 0.4471559524536133, 0.040334463119506836, None, None]
+
+Property No. 15
+
+individual verified proportion 1.0
+baseline verified proportion 1.0
+Uap verified proportion 1.0
+Times: [13.283644199371338, 0.4896976947784424, 0.0007803440093994141, None, None]
+
+Property No. 16
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [13.152645826339722, 0.08768534660339355, 0.46840643882751465, 0.3938136100769043, 0.06701397895812988]
+
+Property No. 17
+
+individual verified proportion 1.0
+baseline verified proportion 1.0
+Uap verified proportion 1.0
+Times: [11.411354780197144, 0.3009660243988037, 0.008363962173461914, None, None]
+
+Property No. 18
+
+individual verified proportion 0.800000011920929
+baseline verified proportion 0.8
+Uap verified proportion 0.8
+Times: [13.074491739273071, 0.6020903587341309, 1.8187005519866943, 1.1759934425354004, 0.5576920509338379]
+
+Property No. 19
+
+individual verified proportion 0.6000000238418579
+baseline verified proportion 0.6000000000000001
+Uap verified proportion 0.6
+Times: [13.342916488647461, 0.3886594772338867, 19.654292345046997, 2.5775582790374756, 2.3629581928253174]
+
+
+
+Eps : 0.01
+Individual verified: 85
+Baseline verified: 85.0
+Uap verified: 86.0
+Extra verified: 1.0
+times: [320.40162110328674, 336.26596546173096, 372.7890031337738, 15.82954740524292, 9.635456800460815]

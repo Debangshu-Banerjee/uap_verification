@@ -6,6 +6,7 @@ from enum import Enum
 class OutSpecType(Enum):
     LOCAL_ROBUST = 1
     GLOBAL = 2
+    MONOTONE = 3
 
 
 # Output constraint is represented as (A^T)*Y + B >= 0
@@ -31,8 +32,11 @@ class Constraint:
                 mat = create_out_targeted_uap_matrix(sink_label)
             else:
                 raise ValueError("Label or Sink Label has to be not None")
-            print("Label ", self.label)
-            print("Matrix shape", mat)
+            # print("Label ", self.label)
+            # print("Matrix shape", mat)
+            self.constr_mat = (mat, 0)
+        if constr_type == OutSpecType.MONOTONE:
+            mat = torch.eye(1)
             self.constr_mat = (mat, 0)
             
 def create_out_constr_matrix(label):

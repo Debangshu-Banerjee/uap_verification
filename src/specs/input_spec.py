@@ -38,7 +38,7 @@ def get_mean_std(dataset):
 
 
 class InputProperty(object):
-    def __init__(self, input_lb, input_ub, out_constr, dataset, input=None):
+    def __init__(self, input_lb, input_ub, out_constr, dataset, input=None, targeted=False, monotone=False, monotone_prop = None):
         self.input_lb = input_lb
         self.input_ub = input_ub
         self.out_constr = out_constr
@@ -47,6 +47,9 @@ class InputProperty(object):
             self.input = input.flatten()
         else:
             self.input = None
+        self.targeted = targeted
+        self.monotone = monotone
+        self.monotone_prop = monotone_prop
 
     def update_input(self, eps):
         self.input += eps 

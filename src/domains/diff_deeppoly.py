@@ -28,7 +28,7 @@ class DiffPropStruct:
  
 
 class DiffDeepPoly:
-    def __init__(self, input1, input2, net, lb_input1, ub_input1, lb_input2, ub_input2, device='') -> None:
+    def __init__(self, input1, input2, net, lb_input1, ub_input1, lb_input2, ub_input2, device='', noise_ind = None, eps = None, monotone = False) -> None:
         self.input1 = input1
         self.input2 = input2
         if self.input1.shape[0] == 784:
@@ -38,6 +38,8 @@ class DiffDeepPoly:
         elif self.input1.shape[0] == 2:
             # For unitest only
             self.input_shape = (1, 1, 2)
+        elif self.input1.shape[0] == 12:
+            self.input_shape = (1, 1, 12)
         else:
             raise ValueError(f"Unrecognised input shape {self.input_shape}")
         self.net = net
@@ -49,8 +51,11 @@ class DiffDeepPoly:
         self.diff = input1 - input2
         self.linear_conv_layer_indices = []
         self.device = device
-        self.diff_log_filename = "/home/debangshu/uap-verification/debug_logs/diff_debug_log.txt"
+        self.diff_log_filename = "/home/cmxu/projects/uap_verification/uap_verification/debug_logs/diff_debug_log.txt"
         self.log_file = None
+        self.noise_ind  = noise_ind
+        self.eps = eps
+        self.monotone = monotone
 
     # Bias cancels out (Ax + b - Ay - b) = A(x - y) = A * delta 
     def handle_linear(self, linear_wt, bias, back_prop_struct):
@@ -325,18 +330,18 @@ class DiffDeepPoly:
         neg_comp_lb_input2, pos_comp_lb_input2 = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_input2_coef)
         neg_comp_ub_input2, pos_comp_ub_input2 = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_input2_coef)
 
-        # self.log_file.write(f"lower bound input1 {lb_input1_layer}\n\n")
-        # self.log_file.write(f"upper bound input1 {ub_input1_layer}\n\n")
-        # self.log_file.write(f"lower bound input2 {lb_input2_layer}\n\n")
-        # self.log_file.write(f"upper bound input2 {ub_input2_layer}\n\n")
-        # self.log_file.write(f"lambda lb {lambda_lb}\n\n")
-        # self.log_file.write(f"lambda ub {lambda_ub}\n\n")
-        # self.log_file.write(f"lambda lb input1 {lambda_lb_input1}\n\n")
-        # self.log_file.write(f"lambda ub input1 {lambda_ub_input1}\n\n")
-        # self.log_file.write(f"lambda lb input2 {lambda_lb_input2}\n\n")
-        # self.log_file.write(f"lambda ub input2 {lambda_ub_input2}\n\n")                        
-        # self.log_file.write(f"mu lb {mu_lb}\n\n")
-        # self.log_file.write(f"mu ub {mu_ub}\n\n")
+        self.log_file.write(f"lower bound input1 {lb_input1_layer}\n\n")
+        self.log_file.write(f"upper bound input1 {ub_input1_layer}\n\n")
+        self.log_file.write(f"lower bound input2 {lb_input2_layer}\n\n")
+        self.log_file.write(f"upper bound input2 {ub_input2_layer}\n\n")
+        self.log_file.write(f"lambda lb {lambda_lb}\n\n")
+        self.log_file.write(f"lambda ub {lambda_ub}\n\n")
+        self.log_file.write(f"lambda lb input1 {lambda_lb_input1}\n\n")
+        self.log_file.write(f"lambda ub input1 {lambda_ub_input1}\n\n")
+        self.log_file.write(f"lambda lb input2 {lambda_lb_input2}\n\n")
+        self.log_file.write(f"lambda ub input2 {lambda_ub_input2}\n\n")                        
+        self.log_file.write(f"mu lb {mu_lb}\n\n")
+        self.log_file.write(f"mu ub {mu_ub}\n\n")
 
 
         delta_lb_coef = pos_comp_lb * lambda_lb + neg_comp_lb * lambda_ub
@@ -401,6 +406,8 @@ class DiffDeepPoly:
                                                 ub_input2_layer=self.ub_input2[linear_layer_index])
                 if not torch.all(new_delta_lb <= new_delta_ub + 1e-6) :
                     print(f"Issue {new_delta_lb  - new_delta_ub }\n\n")
+                    # print( new_delta_lb)
+                    # print(new_delta_ub)
                     self.log_file.write(f"Issue {new_delta_lb  - new_delta_ub }\n\n")
                     if delta_lb is not None:
                         self.log_file.write(f"curr delta diff {delta_lb - delta_ub}\n\n")
@@ -450,25 +457,39 @@ class DiffDeepPoly:
             else:
                 raise NotImplementedError(f'diff verifier for {curr_layer.type} is not implemented')
         
-        # Compute the bounds after back substituting the bounds to the input layer.         
-        new_delta_lb, new_delta_ub = self.concretize_bounds(back_prop_struct=back_prop_struct,
-                                                            delta_lb_layer=self.diff, 
-                                                            delta_ub_layer=self.diff,
-                                                            lb_input1_layer=self.lb_input1[-1],
-                                                            ub_input1_layer=self.ub_input1[-1],
-                                                            lb_input2_layer=self.lb_input2[-1],
-                                                            ub_input2_layer=self.ub_input2[-1])
+        # Compute the bounds after back substituting the bounds to the input layer.
+        #print(self.eps, self.noise_ind)
+        #print('diff', self.diff)
+        #print((-self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12)).shape)
+        #print(self.eps)
+        #print(self.noise_ind[0])
+        if self.monotone:         
+            new_delta_lb, new_delta_ub = self.concretize_bounds(back_prop_struct=back_prop_struct,
+                                                                delta_lb_layer=torch.zeros(12),#-self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(), 
+                                                                delta_ub_layer=self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(),
+                                                                lb_input1_layer=self.lb_input1[-1],
+                                                                ub_input1_layer=self.ub_input1[-1],
+                                                                lb_input2_layer=self.lb_input2[-1],
+                                                                ub_input2_layer=self.ub_input2[-1])
+        else:
+            new_delta_lb, new_delta_ub = self.concretize_bounds(back_prop_struct=back_prop_struct,
+                                                                delta_lb_layer=self.diff, 
+                                                                delta_ub_layer=self.diff,
+                                                                lb_input1_layer=self.lb_input1[-1],
+                                                                ub_input1_layer=self.ub_input1[-1],
+                                                                lb_input2_layer=self.lb_input2[-1],
+                                                                ub_input2_layer=self.ub_input2[-1])
                     
         if not torch.all(new_delta_lb <= new_delta_ub + 1e-6) :
-            print(f"Issue {new_delta_lb  - new_delta_ub }\n\n")
-            self.log_file.write(f"Issue {new_delta_lb  - new_delta_ub }\n\n")
+            print(f"Issue {new_delta_lb  - new_delta_ub}\n\n")
+            self.log_file.write(f"Issue {new_delta_lb  - new_delta_ub}\n\n")
             if delta_lb is not None:
                 self.log_file.write(f"curr delta diff {delta_lb - delta_ub}\n\n")
             assert torch.all(new_delta_lb <= new_delta_ub + 1e-6)
         delta_lb = (new_delta_lb if delta_lb is None else (torch.max(delta_lb, new_delta_lb)))
         delta_ub = (new_delta_ub if delta_ub is None else (torch.min(delta_ub, new_delta_ub)))
 
-
+        #print('ulb', delta_lb, delta_ub)
         return delta_lb, delta_ub
     
     def swap_inputs(self):
@@ -500,7 +521,8 @@ class DiffDeepPoly:
                 print(f"Issue {curr_delta_lb  - curr_delta_ub }\n\n")
                 assert torch.all(curr_delta_lb <= curr_delta_ub + 1e-6)
             brute_delta_lb = self.lb_input1[linear_layer_index] - self.ub_input2[linear_layer_index]
-            brute_delta_ub = self.ub_input1[linear_layer_index] - self.lb_input2[linear_layer_index]            
+            brute_delta_ub = self.ub_input1[linear_layer_index] - self.lb_input2[linear_layer_index]
+
             self.log_file.write(f"curr_delta_lb {linear_layer_index} {curr_delta_lb}\n\n")            
             self.log_file.write(f'curr_diff_delta_lb {linear_layer_index} {brute_delta_lb}\n\n')
             self.log_file.write(f"curr_delta_ub {linear_layer_index} {curr_delta_ub}\n\n")            

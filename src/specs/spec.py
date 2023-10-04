@@ -8,6 +8,8 @@ from src.specs.relu_spec import Reluspec
 from src.util import prepare_data
 from src.common import Status
 from src.common.dataset import Dataset
+import pandas as pd
+import numpy as np
 
 '''
 Specification holds upper bound and lower bound on ranges for each dimension.
@@ -256,7 +258,7 @@ def process_input_for_binary(inputs, labels, target_count=0):
     new_labels = torch.stack(new_labels)
     return new_inputs, new_labels
 
-def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_label=None, debug_mode=False):
+def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_label=None, debug_mode=False, monotone_prop = None, monotone_inv = False):
     if debug_mode == True:
         return generate_debug_specs(count=count, eps=eps)
     if dataset == Dataset.MNIST or dataset == Dataset.CIFAR10:
@@ -283,6 +285,7 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_
             testloader = prepare_data(dataset, batch_size=count)
             inputs, labels = next(iter(testloader))
             # For untargeted uap we reuse the linf specs.
+            #print(inputs.shape, labels.shape)
             props = get_linf_spec(inputs, labels, eps, dataset)
         elif spec_type == InputSpecType.UAP_TARGETED:
             testloader = prepare_data(dataset, batch_size=2*count)
@@ -296,6 +299,17 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_
             inputs, labels = process_input_for_binary(inputs=inputs, labels=labels, target_count=count)
             props = get_binary_uap_spec(inputs=inputs, labels=labels, eps=eps, dataset=dataset)   
         return props, inputs
+    elif dataset == Dataset.HOUSING:
+        test_dataset = pd.read_csv('monotonic-neural-networks/data/boston_house_pricing/testing_data.csv', index_col=0)
+
+        test_labels = test_dataset.pop('HousePrice')
+        test_dataset, test_labels = torch.tensor(np.array(test_dataset), dtype = torch.float32), torch.tensor(np.array(test_labels), dtype = torch.float32)
+        test_dataset, test_labels = test_dataset[:count].reshape(count, 1, 12), test_labels[:count]
+        props = get_monotone_spec(test_dataset, test_labels, eps, dataset, monotone_prop = monotone_prop, monotone_inv = monotone_inv)
+        #props = get_linf_spec_test(test_dataset, test_labels, eps, dataset)
+        #props = get_linf_spec_test(test_dataset, test_labels, eps, dataset)
+        return props, test_dataset
+        #return props, torch.cat((test_dataset, test_dataset), dim = 0)
     elif dataset == Dataset.ACAS:
         return get_acas_props(count), None
     else:
@@ -318,7 +332,7 @@ def generate_debug_specs(count=2, eps=1.0):
         if i % 2 == 0:
             t += torch.tensor([14, 11])
         else:
-            t += torch.tensor([12, 14])
+            t += torch.tensor([11, 14])
         inputs.append(t)
     for i, input in enumerate(inputs):
         ilb = input - eps
@@ -328,6 +342,72 @@ def generate_debug_specs(count=2, eps=1.0):
         out_constr = Constraint(OutSpecType.LOCAL_ROBUST, label=torch.tensor([i%2]), debug_mode=True)
         props.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset='dataset', input=input))
     return props, inputs
+
+def get_monotone_spec(inputs, labels, eps, dataset, monotone_prop = None, monotone_inv = False):
+    properties = []
+
+    for i in range(len(inputs)):
+        image = inputs[i]
+
+        #ilb = image - eps
+        #iub = image + eps
+        ilb = image.clone()
+        iub = image.clone()
+        iub[:, monotone_prop] += eps
+        # ilb[:, monotone_prop] -= eps
+        # mean, std = get_mean_std(dataset)
+        # ilb = (ilb - mean) / std
+        # iub = (iub - mean) / std
+        
+        # image = (image - mean) / std
+        # if monotone_inv:
+        #     ilb = torch.cat((ilb, ilb_upper), dim = 0)
+        #     iub = torch.cat((iub_lower, iub), dim = 0)
+        # else:
+        #     ilb = torch.cat((ilb_upper, ilb), dim = 0)
+        #     iub = torch.cat((iub, iub_lower), dim = 0)
+        # image = torch.cat((image, image), dim = 0)
+        # mean, std = get_mean_std(dataset)
+        # ilb = (ilb - mean) / std
+        # iub = (iub - mean) / std
+        
+        # image = (image - mean) / std
+        ilb = ilb.reshape(-1)
+        iub = iub.reshape(-1)
+        base = image.reshape(-1)
+        out_constr = Constraint(OutSpecType.MONOTONE, label = labels[i])
+        #print(monotone_inv)
+        if monotone_inv:
+            properties.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset, input=image, monotone = True, monotone_prop = monotone_prop))
+            properties.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset, input=image, monotone = True, monotone_prop = monotone_prop))
+        else:
+            properties.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset, input=image, monotone = True, monotone_prop = monotone_prop))
+            properties.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset, input=image, monotone = True, monotone_prop = monotone_prop))
+    
+
+    return properties
+
+def get_linf_spec_test(inputs, labels, eps, dataset):
+    properties = []
+
+    for i in range(len(inputs)):
+        image = inputs[i]
+
+        ilb = image - eps
+        iub = image + eps
+
+        mean, std = get_mean_std(dataset)
+        ilb = (ilb - mean) / std
+        iub = (iub - mean) / std
+        
+        image = (image - mean) / std
+
+        ilb = ilb.reshape(-1)
+        iub = iub.reshape(-1)
+        out_constr = Constraint(OutSpecType.MONOTONE, label = labels[i])
+        properties.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset, input=image))
+
+    return properties
 
 # Get the specification for local linf robusteness.
 # Untargeted uap are exactly same for local linf specs.
@@ -341,14 +421,13 @@ def get_linf_spec(inputs, labels, eps, dataset):
         iub = image + eps
 
         mean, std = get_mean_std(dataset)
-
         ilb = (ilb - mean) / std
         iub = (iub - mean) / std
+        
         image = (image - mean) / std
 
         ilb = ilb.reshape(-1)
         iub = iub.reshape(-1)
-
         out_constr = Constraint(OutSpecType.LOCAL_ROBUST, label=labels[i])
         properties.append(Property(ilb, iub, InputSpecType.LINF, out_constr, dataset, input=image))
 
@@ -466,8 +545,10 @@ def get_patch_specs(inputs, labels, eps, dataset, p_width=2, p_length=2):
 
 def get_mean_std(dataset):
     if dataset == Dataset.MNIST:
-        means = [0]
-        stds = [1]
+        # means = [0]
+        # stds = [1]
+        means = [0.1307]
+        stds = [0.3081]
     elif dataset == Dataset.CIFAR10:
         # For the model that is loaded from cert def this normalization was
         # used
@@ -478,6 +559,9 @@ def get_mean_std(dataset):
     elif dataset == Dataset.ACAS:
         means = [19791.091, 0.0, 0.0, 650.0, 600.0]
         stds = [60261.0, 6.28318530718, 6.28318530718, 1100.0, 1200.0]
+    elif dataset == Dataset.HOUSING:
+        means = 0
+        stds = 1
     else:
         raise ValueError("Unsupported Dataset!")
     return torch.tensor(means).reshape(-1, 1, 1), torch.tensor(stds).reshape(-1, 1, 1)

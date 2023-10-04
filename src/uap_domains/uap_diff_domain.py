@@ -21,8 +21,11 @@ class UapDiff:
         self.constr_matrices = []
         self.no_lp_for_verified = False
         self.baseline_verified_props = 0
+        self.noise_ind = baseline_results[0].noise_ind
+        #self.eps = baseline_results[0].eps
 
-    def compute_difference_dict(self):
+    def compute_difference_dict(self, monotone = False):
+        #print('hi', len(self.baseline_results))
         for i in range(len(self.baseline_results)):
             for j in range(i+1, len(self.baseline_results)):
                 result1 = self.baseline_results[i]
@@ -36,11 +39,12 @@ class UapDiff:
                 with torch.no_grad():
                     diff_poly_ver = DiffDeepPoly(input1=input1, input2=input2, net=self.net, 
                                 lb_input1=input1_lbs, ub_input1=input1_ubs,
-                                lb_input2=input2_lbs, ub_input2=input2_ubs, device='cpu')
+                                lb_input2=input2_lbs, ub_input2=input2_ubs, device='cpu', noise_ind = self.noise_ind, eps = self.eps, monotone = monotone)
                     delta_lbs, delta_ubs = diff_poly_ver.run()
                 self.difference_lbs_dict[(i, j)] = delta_lbs
                 self.difference_ubs_dict[(i, j)] = delta_ubs
-            self.input_list.append(self.baseline_results[i].input)        
+            self.input_list.append(self.baseline_results[i].input)
+            
 
     def populate_lbs_and_ubs(self):
         for i in range(len(self.baseline_results)):
@@ -63,42 +67,94 @@ class UapDiff:
         self.props = new_props
         self.baseline_results = new_baseline_results
 
-    def run(self, proportion=False) -> UAPSingleRes:
+    def run(self, proportion=False, targeted = False, monotone = False, monotonic_inv = False, diff = True) -> UAPSingleRes:
         start_time = time.time()
-        if self.no_lp_for_verified == True:
+        if self.no_lp_for_verified == True and not targeted and not monotone:
             self.prune_verified_props()
         self.populate_lbs_and_ubs()        
-        self.compute_difference_dict()
+        self.compute_difference_dict(monotone = monotone)
+        
+        if monotone:
+            verified_status = Status.UNKNOWN
+            print(self.difference_lbs_dict[(0,1)][-1], self.difference_ubs_dict[(0,1)][-1])
+            if not monotonic_inv:
+                if self.difference_lbs_dict[(0,1)][-1] >= 0:
+                    verified_status = Status.VERIFIED
+            else:
+                if self.difference_ubs_dict[(0,1)][-1] <= 0:
+                    verified_status = Status.VERIFIED
+            return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
+                    status=verified_status, global_lb=None, time_taken=None, 
+                    verified_proportion=None) 
+
         self.populate_matrices()
         if self.args.debug_mode is True:
+            print(self.input_list)
             print("input1 ", self.input_list[0])
             print("input2 ", self.input_list[1])
+            print(self.input_lbs)
+            print(self.input_ubs)
+            print(self.difference_lbs_dict)
+            print(self.difference_ubs_dict)
+            print(self.eps)
+            print(self.net[0].weight, self.net[0].bias)
+            print(self.net[1].weight, self.net[1].bias)
+            print(self.net[2].weight, self.net[2].bias)
+            
         # Call the lp formulation with the differential lp code.
-        uap_lp_transformer = UAPLPtransformer(mdl=self.net, xs=self.input_list, 
-                                              eps=self.eps, x_lbs=self.input_lbs,
-                                              x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
-                                              d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
-                                              debug_mode=self.args.debug_mode,
-                                              track_differences=self.args.track_differences)
+        if not diff:
+            print('hi')
+            uap_lp_transformer = UAPLPtransformer(mdl=self.net, xs=self.input_list, 
+                                                eps=self.eps, x_lbs=self.input_lbs,
+                                                x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
+                                                d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
+                                                debug_mode=self.args.debug_mode,
+                                                track_differences=False, props = self.props, monotone = monotone)
+        else:
+            uap_lp_transformer = UAPLPtransformer(mdl=self.net, xs=self.input_list, 
+                                                eps=self.eps, x_lbs=self.input_lbs,
+                                                x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
+                                                d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
+                                                debug_mode=self.args.debug_mode,
+                                                track_differences=self.args.track_differences, props = self.props, monotone = monotone)
+        
         # Formulate the Lp problem.
         uap_lp_transformer.create_lp()
+       
         verified_percentages = None
         global_lb = None
         verified_status = Status.UNKNOWN
-        if proportion == False:
-            global_lb = uap_lp_transformer.optimize_lp()
-            print("Diff global lb", global_lb)
-            if global_lb >= 0.0:
-                verified_status = Status.VERIFIED            
+        if isinstance(monotone, torch.FloatTensor):
+            verified_percentages = uap_lp_transformer.optimize_monotone(monotone)
+        elif targeted:
+            verified_percentages, bin_sizes = uap_lp_transformer.optimize_targeted()
+            print("Diff global proportion ", verified_percentages)
+            results = []
+            for i, an in enumerate(verified_percentages):
+                verified_proportion = an
+                if verified_proportion >= self.args.cutoff_percentage:
+                    verified_status = Status.VERIFIED
+                results.append(UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
+                        status=verified_status, global_lb=global_lb, time_taken=None, 
+                        verified_proportion=verified_proportion, bin_size = bin_sizes[i], constraint_time = uap_lp_transformer.constraint_time, optimize_time = uap_lp_transformer.optimize_time))
+                verified_status = Status.UNKNOWN
+            return results
         else:
-            verified_percentages = uap_lp_transformer.optimize_milp_percent()
-            verified_props = verified_percentages * len(self.props)
-            verified_percentages = (verified_props + self.baseline_verified_props) / self.total_props
-            print("Diff Verified percentages", verified_percentages)
-            if verified_percentages >= self.args.cutoff_percentage:
-                verified_status = Status.VERIFIED
+            if proportion == False:
+                global_lb = uap_lp_transformer.optimize_lp()
+                print("Diff global lb", global_lb)
+                if global_lb >= 0.0:
+                    verified_status = Status.VERIFIED            
+            else:
+                verified_percentages = uap_lp_transformer.optimize_milp_percent()
+                verified_props = verified_percentages * len(self.props)
+                verified_percentages = (verified_props + self.baseline_verified_props) / self.total_props
+                print("Diff Verified percentages", verified_percentages)
+                if verified_percentages >= self.args.cutoff_percentage:
+                    verified_status = Status.VERIFIED
+            
 
         time_taken = time.time() - start_time
         return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
                     status=verified_status, global_lb=None, time_taken=time_taken, 
-                    verified_proportion=verified_percentages)
+                    verified_proportion=verified_percentages, constraint_time = uap_lp_transformer.constraint_time, optimize_time = uap_lp_transformer.optimize_time)

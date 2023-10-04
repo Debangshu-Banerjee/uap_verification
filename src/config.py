@@ -1,4 +1,5 @@
 from src.specs.input_spec import InputSpecType
+from enum import IntEnum
 
 NET_HOME = "src/nets/"
 DEVICE = 'cpu'
@@ -52,17 +53,25 @@ baseline = "Baseline"
 # Networks
 MNIST_FFN_01 = "mnist_0.1.onnx"  # 9508 neuron
 MNIST_FFN_03 = "mnist_0.3.onnx"
-MNIST_FFN_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
-MNIST_FFN_PGD = "mnistconvSmallRELU__PGDK.onnx"
 MNIST_CONV_PGD_03 = "convMedGRELU__PGDK_w_0.3.onnx"
 MNIST_FFN_L2 = "mnist-net_256x2.onnx"  # 512 neurons
 MNIST_FFN_L4 = "mnist-net_256x4.onnx"   # 1024 neurons
 MNIST_FFN_torch1 = "cpt/fc1.pt"
 MNIST_STANDARD_MODIFIED = "mnist_standard_modified.pt"
-MNIST_LINEAR_50 = "mnist_relu_3_50.onnx"
-MNIST_LINEAR_100 = "mnist_relu_3_100.onnx"
 MNIST_LINEAR_5_100 = "mnist_relu_5_100.onnx"
 MNIST_BINARY = "mnist_binary.onnx"
+
+
+MNIST_LINEAR_50 = "mnist_relu_3_50.onnx"
+MNIST_LINEAR_100 = "mnist_relu_3_100.onnx"
+MNIST_LINEAR_6_100 = "mnist_relu_6_100.onnx"
+MNIST_LINEAR_9_200 = "mnist_relu_9_200.onnx"
+
+MNIST_CONV_SMALL = 'mnist_convSmallRELU__Point.onnx'
+MNIST_FFN_PGD = "mnistconvSmallRELU__PGDK.onnx"
+MNIST_FFN_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
+MNIST_CONV_MED = 'mnistconvMedGRELU__Point.onnx'
+MNIST_CONV_BIG = 'mnistconvBigRELU__DiffAI.onnx'
 
 
 # MNIST crown-ibp network
@@ -89,6 +98,30 @@ CIFAR_CONV_BIG = "convBigRELU__DiffAI_cifar.onnx"  # 62,464 neurons
 CIFAR_OVAL_BASE = "oval21/cifar_base_kw.onnx"   # 3172 neurons
 CIFAR_OVAL_WIDE = "oval21/cifar_wide_kw.onnx"   # 6244 neurons
 CIFAR_OVAL_DEEP = "oval21/cifar_deep_kw.onnx"   # 6756 neurons
+
+CIFAR_CONV_SMALL = "convSmallRELU__Point.onnx"   # 3,604 neurons
+CIFAR_CONV_SMALL_PGD = "cifarconvSmallRELU__PGDK.onnx"   # 3,604 neurons
+CIFAR_CONV_SMALL_DIFFAI = "cifar10convSmallRELUDiffAI.onnx"   # 3,604 neurons
+CIFAR_CONV_MED = "cifarconvmedRELU__Point.onnx"   # 3,604 neurons
+
+HOUSING_RM_CRIM = 'monotonic.onnx'
+HOUSING_2LAYER = 'monotonic_2layer.onnx'
+HOUSING_2LAYER_100 = 'monotonic_2layer_100.onnx'
+HOUSING_2LAYER_200 = 'monotonic_2layer_200.onnx'
+
+class MONOTONE_PROP(IntEnum):
+    CRIM = 0
+    ZN = 1
+    INDUS = 2
+    NOX = 3
+    RM = 4
+    AGE = 5
+    DIS = 6
+    RAD = 7
+    TAX = 8
+    PTRATIO = 9
+    B = 10
+    LSTAT = 11
 
 
 def ACASXU(i, j):

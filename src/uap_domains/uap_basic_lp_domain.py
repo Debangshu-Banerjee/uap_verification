@@ -130,12 +130,18 @@ class UapBasicLP:
     def run_crown_lp_baseline(self, proportion):
         pass                  
 
-    def run(self, proportion=False) -> UAPSingleRes:
+    def run(self, proportion=False, targeted = False, monotone = False, monotonic_inv = False) -> UAPSingleRes:
         self.populate_info()
         if self.zono_centers is not None:
             ans = self.run_zono_lp_baseline(proportion=proportion)
             if ans is None:
-                return None
+                verified_status = Status.UNKNOWN
+                verified_proportion = sum([self.baseline_lbs[i] >= 0 for i in range(len(self.baseline_lbs))])/len(self.baseline_lbs)
+                if verified_proportion >= self.args.cutoff_percentage:
+                    verified_status = Status.VERIFIED
+                return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
+                    status=verified_status, global_lb=None, time_taken=None, 
+                    verified_proportion=verified_proportion)
             else:
                 global_lb = None
                 verified_proportion = None

@@ -1,0 +1,28 @@
+\ Model _copy
+\ LP format - for model browsing. Use MPS format to capture full model detail.
+Minimize
+ 
+Subject To
+ R180: 0.444928765296936 layer_1_relu_x1[0]
+   + 0.2651734352111816 layer_1_relu_x1[1]
+   + 0.0879733562469482 layer_1_relu_x1[2]
+   - 0.4205901622772217 layer_1_relu_x1[3]
+   - 0.2845367193222046 layer_1_relu_x1[4]
+   + 0.1989600658416748 layer_1_relu_x1[5]
+   + 0.4400261640548706 layer_1_relu_x1[6]
+   + 0.4093656539916992 layer_1_relu_x1[7]
+   + 0.2362196445465088 layer_1_relu_x1[8]
+   + 0.4717603921890259 layer_1_relu_x1[9]
+   + 0.298389196395874 layer_1_relu_x1[10]
+   + 0.2623019218444824 layer_1_relu_x1[11] + layer_2_linear_x1[0] = 0
+Bounds
+ layer_1_relu_x1[0] >= 126.7192840576172
+ layer_1_relu_x1[2] >= 278.5103759765625
+ -infinity <= layer_1_relu_x1[3] <= 0
+ -infinity <= layer_1_relu_x1[4] <= 0
+ layer_1_relu_x1[6] >= 44.20965957641602
+ layer_1_relu_x1[7] >= 70.66897583007812
+ layer_1_relu_x1[9] >= 206.5199432373047
+ layer_1_relu_x1[11] >= 91.94600677490234
+ layer_2_linear_x1[0] >= -250.8109436035156
+End
