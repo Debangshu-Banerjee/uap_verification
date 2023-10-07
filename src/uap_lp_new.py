@@ -258,8 +258,8 @@ class UAPLPtransformer:
             self.debug_log_file.write(f"proportion {p.X}\n")
             # print(f"verified proportion {p.X}\n")
             self.debug_log_file.close()
-            print("Final MIP gap value: %f" % self.gmdl.MIPGap)
-            print("Final ObjBound: %f" % self.gmdl.ObjBound)
+            # print("Final MIP gap value: %f" % self.gmdl.MIPGap)
+            # print("Final ObjBound: %f" % self.gmdl.ObjBound)
             return self.gmdl.ObjBound
         else:
             if self.gmdl.status == 4:
@@ -446,84 +446,6 @@ class UAPLPtransformer:
                                     
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
 
-    # def handle_conv(model, var_list, start_counter, filters,biases,filter_size,input_shape, strides, out_shape, pad_top,
-    #             pad_left, pad_bottom, pad_right, lbi, ubi, use_milp, is_nchw=False):
-
-    # num_out_neurons = np.prod(out_shape)
-    # num_in_neurons = np.prod(input_shape)#input_shape[0]*input_shape[1]*input_shape[2]
-    # #print("filters", filters.shape, filter_size, input_shape, strides, out_shape, pad_top, pad_left)
-    # start = len(var_list)
-    # for j in range(num_out_neurons):
-    #     var_name = "x" + str(start+j)
-    #     var = model.addVar(vtype=GRB.CONTINUOUS, lb=lbi[j], ub =ubi[j], name=var_name)
-    #     var_list.append(var)
-
-    # #print("OUT SHAPE ", out_shape, input_shape, filter_size, filters.shape, biases.shape)
-    # if is_nchw:
-    #     for out_z in range(out_shape[1]):
-    #         for out_x in range(out_shape[2]):
-    #             for out_y in range(out_shape[3]):
-                
-    #                 dst_ind = out_z*out_shape[2]*out_shape[3] + out_x*out_shape[3] + out_y
-    #                 expr = LinExpr()
-    #                 #print("dst ind ", dst_ind)
-    #                 expr += -1*var_list[start+dst_ind]
-                    
-    #                 for inp_z in range(input_shape[0]):
-    #                     for x_shift in range(filter_size[0]):
-    #                         for y_shift in range(filter_size[1]):
-    #                             x_val = out_x*strides[0]+x_shift-pad_top
-    #                             y_val = out_y*strides[1]+y_shift-pad_left
-    #                             if(y_val<0 or y_val >= input_shape[2]):
-    #                                 continue
-    #                             if(x_val<0 or x_val >= input_shape[1]):
-    #                                 continue
-    #                             mat_offset = x_val*input_shape[2] + y_val + inp_z*input_shape[1]*input_shape[2]
-    #                             if(mat_offset>=num_in_neurons):
-    #                                 continue 
-    #                             src_ind = start_counter + mat_offset
-    #                             #print("src ind ", mat_offset)
-    #                             #filter_index = x_shift*filter_size[1]*input_shape[0]*out_shape[1] + y_shift*input_shape[0]*out_shape[1] + inp_z*out_shape[1] + out_z
-    #                             expr.addTerms(filters[out_z][inp_z][x_shift][y_shift],var_list[src_ind])
-                                                           
-    #                 expr.addConstant(biases[out_z])
-                    
-    #                 model.addConstr(expr, GRB.EQUAL, 0)  
-                      
-    # else:
-    #     for out_x in range(out_shape[1]):
-    #         for out_y in range(out_shape[2]):
-    #             for out_z in range(out_shape[3]):
-    #                 dst_ind = out_x*out_shape[2]*out_shape[3] + out_y*out_shape[3] + out_z
-    #                 expr = LinExpr()
-    #                 expr += -1*var_list[start+dst_ind]
-    #                 for inp_z in range(input_shape[2]):
-    #                     for x_shift in range(filter_size[0]):
-    #                         for y_shift in range(filter_size[1]):
-    #                             x_val = out_x*strides[0]+x_shift-pad_top
-    #                             y_val = out_y*strides[1]+y_shift-pad_left
-
-    #                             if(y_val<0 or y_val >= input_shape[1]):
-    #                                 continue
-
-    #                             if(x_val<0 or x_val >= input_shape[0]):
-    #                                 continue
-
-    #                             mat_offset = x_val*input_shape[1]*input_shape[2] + y_val*input_shape[2] + inp_z
-    #                             if(mat_offset>=num_in_neurons):
-    #                                 continue
-    #                             src_ind = start_counter + mat_offset
-    #                             #filter_index = x_shift*filter_size[1]*input_shape[2]*out_shape[3] + y_shift*input_shape[2]*out_shape[3] + inp_z*out_shape[3] + out_z
-    #                          #expr.addTerms(filters[filter_index],var_list[src_ind])
-    #                             expr.addTerms(filters[x_shift][y_shift][inp_z][out_z],var_list[src_ind])
-
-    #                 expr.addConstant(biases[out_z])
-    #                 model.addConstr(expr, GRB.EQUAL, 0)
-    # return start
-
-
-
-
     def create_conv2d_constraints_helper(self, vars, pre_vars, num_kernel, output_h, 
                                          output_w, bias, weight, layer, input_h, input_w):
         out_idx = 0
@@ -560,21 +482,6 @@ class UAPLPtransformer:
                         for i, gvars in enumerate(gvars_array):
                             gvar = gvars[in_chan_idx, in_row_idx_min:in_row_idx_max+1, in_col_idx_min:in_col_idx_max+1].reshape(-1)
                             lin_expressions[i] += grb.LinExpr(coeffs, gvar)
-                    
-                    # for in_chan_idx in range(weight.shape[1]):
-                    #     for ker_row_idx in range(weight.shape[2]):
-                    #         in_row_idx = -layer.padding[0] + layer.stride[0] * out_row_idx + ker_row_idx
-                    #         if (in_row_idx < 0) or (in_row_idx == input_h):
-                    #             # This is padding -> value of 0
-                    #             continue
-                    #         for ker_col_idx in range(weight.shape[3]):
-                    #             in_col_idx = -layer.padding[1] + layer.stride[1] * out_col_idx + ker_col_idx
-                    #             if (in_col_idx < 0) or (in_col_idx == input_w):
-                    #                 # This is padding -> value of 0
-                    #                 continue
-                    #             coeff = layer.weight[out_chan_idx, in_chan_idx, ker_row_idx, ker_col_idx].item()
-
-                    #             lin_expr += coeff * pre_var[in_chan_idx * (input_h * input_w) + in_row_idx * (input_w) + in_col_idx]
                     for i, var in enumerate(vars):
                         self.gmdl.addConstr(var[out_idx] == lin_expressions[i] + bias[out_chan_idx].item())
                     out_idx += 1
@@ -598,10 +505,6 @@ class UAPLPtransformer:
 
         # Updated shape
         self.shape = (num_kernel, output_h, output_w)
-        # for v_idx, v in enumerate(vs):
-        #     self.create_conv2d_constraints_helper(var=v, pre_var=self.gurobi_variables[-1]['vs'][v_idx],
-        #                                           num_kernel=num_kernel, output_h=output_h, output_w=output_w,
-        #                                           bias=bias, weight=weight, layer=layer, input_h=input_h, input_w=input_w)
         self.create_conv2d_constraints_helper(vars=vs, pre_vars=self.gurobi_variables[-1]['vs'],
                                                    num_kernel=num_kernel, output_h=output_h, output_w=output_w,
                                                   bias=bias, weight=weight, layer=layer, input_h=input_h, input_w=input_w)
