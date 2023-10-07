@@ -6,6 +6,8 @@ from src.uap_analyzer_backend import UAPAnalyzerBackendWrapper
 from src.uap_results import UAPResultList
 from enum import Enum
 from copy import deepcopy
+import time
+
 
 class UAPMode(Enum):
     RADIUS = 1
@@ -20,7 +22,8 @@ class UapAnalysisArgs:
                  eps=0.01, net='', timeout=30, output_dir='', radius_l=0.1, 
                  radius_r=0.3, uap_mode=UAPMode.RADIUS, cutoff_percentage = 0.5,
                  compute_proportion=False, no_lp_for_verified=False, write_file = False, 
-                 debug_mode=False, track_differences=True, monotone_prop = None, monotone_inv = False) -> None:
+                 debug_mode=False, track_differences=True, monotone_prop = None, monotone_inv = False, 
+                 lp_formulation_threshold=2) -> None:
         self.individual_prop_domain = individual_prop_domain
         self.domain = domain
         self.baseline_domain = baseline_domain
@@ -45,6 +48,7 @@ class UapAnalysisArgs:
         self.track_differences = track_differences
         self.monotone_prop = monotone_prop
         self.monotone_inv = monotone_inv
+        self.lp_formulation_threshold = lp_formulation_threshold
         # if debug mode on rewrite params
         if debug_mode == True:
             self.count = 1
@@ -54,6 +58,7 @@ class UapAnalysisArgs:
             self.net = 'debug.net'
 
 def UapVerification(uap_verification_args: UapAnalysisArgs):
+    start_time = time.time()
     total_local_prop_count = uap_verification_args.count * uap_verification_args.count_per_prop
     props, _ = specs.get_specs(uap_verification_args.dataset, spec_type=uap_verification_args.spec_type,
                                     count=total_local_prop_count, eps=uap_verification_args.eps, 

@@ -19,7 +19,8 @@ class UapDiff:
         self.input_lbs = []
         self.input_ubs = []
         self.constr_matrices = []
-        self.no_lp_for_verified = False
+        self.no_lp_for_verified = self.args.no_lp_for_verified
+        self.lp_formulation_threshold = self.args.lp_formulation_threshold
         self.baseline_verified_props = 0
         self.noise_ind = baseline_results[0].noise_ind
         #self.eps = baseline_results[0].eps
@@ -55,12 +56,26 @@ class UapDiff:
         for prop in self.props:
             self.constr_matrices.append(prop.get_input_clause(0).output_constr_mat())
     
+    def get_negative_threshold(self):
+        lb_list = []
+        for i, prop in enumerate(self.props):
+            if torch.min(self.baseline_results[i].final_lb) < 0.0:
+                lb_list.append(torch.min(self.baseline_results[i].final_lb))
+        lb_list.sort()
+        if len(lb_list) <= self.lp_formulation_threshold:
+            return -1e9
+        else:
+            return lb_list[(-self.lp_formulation_threshold - 1)]
+
     def prune_verified_props(self):
         new_props = []
         new_baseline_results = []
+        threshold = self.get_negative_threshold()
         for i, prop in enumerate(self.props):
-            if torch.min(self.baseline_results[i].final_lb) >= 0.0:
-                self.baseline_verified_props += 1
+            lb = torch.min(self.baseline_results[i].final_lb)
+            if  lb >= 0.0 or lb <= threshold:
+                if lb >= 0.0:
+                    self.baseline_verified_props += 1
                 continue
             new_props.append(prop)
             new_baseline_results.append(self.baseline_results[i])
@@ -103,7 +118,6 @@ class UapDiff:
             
         # Call the lp formulation with the differential lp code.
         if not diff:
-            print('hi')
             uap_lp_transformer = UAPLPtransformer(mdl=self.net, xs=self.input_list, 
                                                 eps=self.eps, x_lbs=self.input_lbs,
                                                 x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
@@ -119,6 +133,7 @@ class UapDiff:
                                                 track_differences=self.args.track_differences, props = self.props, monotone = monotone)
         
         # Formulate the Lp problem.
+        lp_start_time = time.time()
         uap_lp_transformer.create_lp()
        
         verified_percentages = None
@@ -153,6 +168,25 @@ class UapDiff:
                 if verified_percentages >= self.args.cutoff_percentage:
                     verified_status = Status.VERIFIED
             
+        # print(f'lp build time {time.time() - lp_start_time}')
+        # verified_percentages = None
+        # global_lb = None
+        # verified_status = Status.UNKNOWN
+        # lp_optimize_start_time = time.time()
+        # if proportion == False:
+        #     global_lb = uap_lp_transformer.optimize_lp()
+        #     print("Diff global lb", global_lb)
+        #     if global_lb >= 0.0:
+        #         verified_status = Status.VERIFIED            
+        # else:
+        #     verified_percentages = uap_lp_transformer.optimize_milp_percent()
+        #     # verified_percentages = 0.0 ##-- just commenting it out to run faster 
+        #     verified_props = verified_percentages * len(self.props)
+        #     verified_percentages = (verified_props + self.baseline_verified_props) / self.total_props
+        #     print("Diff Verified percentages", verified_percentages)
+        #     if verified_percentages >= self.args.cutoff_percentage:
+        #         verified_status = Status.VERIFIED
+        # print(f'lp optimize time {time.time() - lp_optimize_start_time}')
 
         time_taken = time.time() - start_time
         return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,

@@ -51,7 +51,7 @@ class DiffDeepPoly:
         self.diff = input1 - input2
         self.linear_conv_layer_indices = []
         self.device = device
-        self.diff_log_filename = "/home/cmxu/projects/uap_verification/uap_verification/debug_logs/diff_debug_log.txt"
+        self.diff_log_filename = "./debug_logs/diff_debug_log.txt"
         self.log_file = None
         self.noise_ind  = noise_ind
         self.eps = eps
@@ -132,8 +132,6 @@ class DiffDeepPoly:
                             delta_ub_input1_coef=new_delta_ub_input1_coef,
                             delta_lb_input2_coef=new_delta_lb_input2_coef,
                             delta_ub_input2_coef=new_delta_ub_input2_coef)
-
-
         return back_prop_struct
 
     def pos_neg_weight_decomposition(self, coef):
@@ -190,7 +188,7 @@ class DiffDeepPoly:
 
         lambda_lb_input1_prop = torch.zeros(lb_input1_layer.size(), device=self.device)
         lambda_ub_input1_prop = torch.zeros(lb_input1_layer.size(), device=self.device)
-        mu_ub_input1_prop = torch.zeros(lb_input1_layer.size(), device=self.device)        
+        mu_ub_input1_prop = torch.zeros(lb_input1_layer.size(), device=self.device) 
         lambda_lb_input2_prop = torch.zeros(lb_input1_layer.size(), device=self.device)
         lambda_ub_input2_prop = torch.zeros(lb_input1_layer.size(), device=self.device)
         mu_ub_input2_prop = torch.zeros(lb_input1_layer.size(), device=self.device)

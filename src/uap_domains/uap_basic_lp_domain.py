@@ -130,7 +130,7 @@ class UapBasicLP:
     def run_crown_lp_baseline(self, proportion):
         pass                  
 
-    def run(self, proportion=False, targeted = False, monotone = False, monotonic_inv = False) -> UAPSingleRes:
+    def run(self, proportion=False, targeted = False, monotone = False, monotonic_inv = False, diff=None) -> UAPSingleRes:
         self.populate_info()
         if self.zono_centers is not None:
             ans = self.run_zono_lp_baseline(proportion=proportion)

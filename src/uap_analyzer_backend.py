@@ -101,7 +101,7 @@ class UAPAnalyzerBackendWrapper:
         #                                          individual_verification_results=individual_verification_results)
         # baseline_time = time.time() - start_time
         # start_time = time.time()
-        baseline_res = self.run_uap_verification(domain=self.args.domain, 
+        baseline_res = self.run_uap_verification(domain=self.args.baseline_domain, 
                                                 individual_verification_results=individual_verification_results, diff = False)
         baseline_time = time.time() - start_time
         start_time = time.time()

@@ -1,17 +1,28 @@
 import gurobipy as grb
+from gurobipy import GRB
 import torch
 from torch import nn
 from src.common.network import Network, LayerType
 import numpy as np
-from time import time
+import time
 from src.specs.out_spec import create_out_constr_matrix, create_out_targeted_uap_matrix
+
+
+# Manual callback to terminate the gurobi model.
+def softtime(model, where):
+    if where == GRB.Callback.MIP:
+        runtime = model.cbGet(GRB.Callback.RUNTIME)
+        objbst = model.cbGet(GRB.Callback.MIP_OBJBST)
+        objbnd = model.cbGet(GRB.Callback.MIP_OBJBND)
+        if runtime > 80 and objbnd > 0.0:
+            model.terminate()
+
 
 class UAPLPtransformer:
     def __init__(self, mdl, xs, eps, x_lbs, x_ubs, d_lbs, d_ubs, 
-                 constraint_matrices, debug_mode=False, track_differences=True, props = None, monotone = False):
+                 constraint_matrices, debug_mode=False, track_differences=True, props=None, monotone = False):
         self.mdl = mdl
         self.xs = xs
-        #print(xs)
         self.batch_size = len(xs)
         self.input_size = None
         self.shape = None
@@ -24,6 +35,7 @@ class UAPLPtransformer:
         self.x_ubs = x_ubs
         self.d_lbs = d_lbs
         self.d_ubs = d_ubs
+        self.props = props
         # this tracks the index of the last linear (fully connected or conv) 
         # layer already. encountered its -1 at the beginning.
         self.linear_layer_idx = -1 
@@ -36,10 +48,10 @@ class UAPLPtransformer:
         self.tolerence = 2*1e-1
         self.debug_mode = debug_mode
         self.track_differences = track_differences
-        self.constraint_time = None
-        self.optimize_time = None
         self.props = props
         self.monotone = monotone
+        self.constraint_time = None
+        self.optimize_time = None
     
     def set_shape(self):
         if self.input_size == 784:
@@ -49,25 +61,24 @@ class UAPLPtransformer:
         # For debug input.
         elif self.input_size == 2:
             self.shape = (1, 1, 2)
-        elif self.input_size == 12:
-            self.shape = (1, 1, 12)
         else:
             raise ValueError("Unsupported dataset!")
 
 
 
     def create_lp(self):
-        #print(self.batch_size)
         if self.batch_size <= 0:
             return
         self.debug_log_file = open(self.debug_log_filename, 'w+')
         self.gmdl.setParam('OutputFlag', False)
-        #self.gmdl.setParam('Threads', 4)
-        self.gmdl.setParam('TimeLimit', 5*60)
-        #print('hi')
-        self.constraint_time = - time()
+        self.gmdl.setParam('TimeLimit', 300)
+        # self.gmdl.Params.SolutionLimit = 1
+        self.gmdl.Params.MIPFocus = 3
+        self.gmdl.Params.ConcurrentMIP = 3
+        self.constraint_time = - time.time()
         self.create_constraints()
-        #print('hi')
+
+
 
     def optimize_lp(self):
         assert len(self.constraint_matrices) == self.batch_size
@@ -92,12 +103,12 @@ class UAPLPtransformer:
         self.gmdl.setObjective(problem_min, grb.GRB.MINIMIZE)
         if self.debug_mode == True:
             self.gmdl.write("./debug_logs/model.lp")
-            # self.gmdl.write("./debug_logs/out.sol")
-        #print('hi')
-        self.constraint_time += time()
-        self.optimize_time = - time()
+        self.constraint_time += time.time()
+        self.optimize_time = - time.time()        
         self.gmdl.optimize()
-        self.optimize_time += time()
+        self.optimize_time += time.time() 
+
+
         if self.gmdl.status == 2:
             self.debug_log_file.write(f"Problem min {problem_min.X}\n")
             # print(f"Problem min {problem_min.X}\n")
@@ -122,129 +133,11 @@ class UAPLPtransformer:
                 self.gmdl.write("model.ilp") 
                 self.debug_log_file.close()   
                 return NotImplementedError
-    
-    def optimize_mono(self, monotonic_inv = False):
-        #print(self.gurobi_variables[-1]['ds'])
-        p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f'diff')
-        self.gmdl.addConstr(p == self.gurobi_variables[-1]['vs'][0] - self.gurobi_variables[-1]['vs'][1])
-        if not monotonic_inv:
-            self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
-        else:
-            self.gmdl.setObjective(p, grb.GRB.MAXIMIZE)
-
-        # p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name=f'diff')
-        # self.gmdl.addConstr(p == grb.quicksum(self.gurobi_variables[-1]['ds'][0]))
-        # self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
-            # self.gmdl.write("./debug_logs/out.sol")
-        #print('hi')
-        self.constraint_time += time()
-        self.optimize_time = - time()
-        self.gmdl.optimize()
-        self.optimize_time += time()
-        self.debug_log_file.close()
-        if self.gmdl.status == 2:
-            #self.debug_log_file.write(f"Problem min {p.X}\n")
-            # print(f"Problem min {problem_min.X}\n")
-            #self.debug_log_file.close()
-            return p.X
-        else:
-            if self.gmdl.status == 4:
-                self.gmdl.setParam('PreDual',0)
-                self.gmdl.setParam('DualReductions', 0)
-                self.gmdl.optimize()
-            elif self.gmdl.status == 13 or self.gmdl.status == 9:
-                print("Suboptimal solution")
-                #self.debug_log_file.close()
-                if self.gmdl.SolCount > 0:
-                    return p.X
-                else:
-                    return 0.0
-            print("Gurobi gmndl status", self.gmdl.status)
-            #self.debug_log_file.close()
-            if self.gmdl.status == 3:
-                #orignumvars = self.gmdl.NumVars
-                #self.gmdl.feasRelaxS(1, False, False, True) 
-                #self.gmdl.optimize()
-                #slacks = self.gmdl.getVars()[orignumvars:]
-                # for sv in slacks:
-                #     if sv.X > 1e-9:
-                #         print('%s = %g' % (sv.VarName, sv.X))
-                # print(p.X)
-                self.gmdl.computeIIS()
-                self.gmdl.write("model.ilp") 
-                #self.debug_log_file.close()   
-                return NotImplementedError
+        
 
     def optimize_monotone(self, monotone):
-        binary_vars = []
-        #print(self.gurobi_variables)
-        #print(len(self.gurobi_variables[-1]['vs']))
-        for i in range(int(len(self.gurobi_variables[-1]['vs'])/2)):
-            #print(self.gurobi_variables[-1]['vs'][i])
-            #print(self.gurobi_variables[-1]['vs'][2*i])
-            b_up = self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{i}_upper')
-            b_low = self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{i}_lower')
-            # BIG M formulation 
-            BIG_M = 1e11
-
-            # Force binary_vars[-1] to be '1' when t_min > 0
-            self.gmdl.addConstr(BIG_M * b_up >= self.gurobi_variables[-1]['vs'][2*i] - monotone[2*i])
-            # Force binary_vars[-1] to be '0' when t_min < 0 or -t_min  > 0
-            self.gmdl.addConstr(BIG_M * (b_up - 1) <= self.gurobi_variables[-1]['vs'][2*i] - monotone[2*i])
-
-            # Force binary_vars[-1] to be '1' when t_min > 0
-            self.gmdl.addConstr(BIG_M * b_low >= monotone[2*i + 1] - self.gurobi_variables[-1]['vs'][2*i + 1])
-            # Force binary_vars[-1] to be '0' when t_min < 0 or -t_min  > 0
-            self.gmdl.addConstr(BIG_M * (b_low - 1) <= monotone[2*i + 1] - self.gurobi_variables[-1]['vs'][2*i + 1])
-            b = self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f'b{i}')
-            self.gmdl.addConstr(b == grb.and_(b_up, b_low))
-            binary_vars.append(b)
-
-        p = self.gmdl.addVar(vtype=grb.GRB.CONTINUOUS, name='p')
-        self.gmdl.addConstr(p == grb.quicksum(binary_vars[i] for i in range(len(binary_vars))) / len(binary_vars))
-        # self.model.reset()
-        self.gmdl.update()
-        self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
-        if self.debug_mode == True:
-            self.gmdl.write("./debug_logs/model.lp")
-            # self.gmdl.write("./debug_logs/out.sol")
-        #print('hi')
-        self.constraint_time += time()
-        self.optimize_time = - time()
-        self.gmdl.optimize()
-        self.optimize_time += time()
-        if self.gmdl.status == 2:
-            self.debug_log_file.write(f"Problem min {p.X}\n")
-            # print(f"Problem min {problem_min.X}\n")
-            self.debug_log_file.close()
-            return p.X
-        else:
-            if self.gmdl.status == 4:
-                self.gmdl.setParam('PreDual',0)
-                self.gmdl.setParam('DualReductions', 0)
-                self.gmdl.optimize()
-            elif self.gmdl.status == 13 or self.gmdl.status == 9:
-                print("Suboptimal solution")
-                self.debug_log_file.close()
-                if self.gmdl.SolCount > 0:
-                    return p.X
-                else:
-                    return 0.0
-            print("Gurobi gmndl status", self.gmdl.status)
-            self.debug_log_file.close()
-            if self.gmdl.status == 3:
-                #orignumvars = self.gmdl.NumVars
-                #self.gmdl.feasRelaxS(1, False, False, True) 
-                #self.gmdl.optimize()
-                #slacks = self.gmdl.getVars()[orignumvars:]
-                # for sv in slacks:
-                #     if sv.X > 1e-9:
-                #         print('%s = %g' % (sv.VarName, sv.X))
-                # print(p.X)
-                self.gmdl.computeIIS()
-                self.gmdl.write("model.ilp") 
-                self.debug_log_file.close()   
-                return NotImplementedError
+        # TODO(debangshu) Implement the monotonicity verifier separately may be.
+        return 0.0    
 
     def optimize_targeted(self):
         percentages = []
@@ -283,11 +176,11 @@ class UAPLPtransformer:
             self.gmdl.update()
             self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
             
-            self.constraint_time += time()
-            self.optimize_time = - time()
+            self.constraint_time += time.time()
+            self.optimize_time = - time.time()
             self.gmdl.optimize()
-            self.optimize_time += time()
-            self.constraint_time -= time()
+            self.optimize_time += time.time()
+            self.constraint_time -= time.time()
             
             if self.debug_mode is True:
                 print("Here")
@@ -312,17 +205,11 @@ class UAPLPtransformer:
                     else:
                         percentages.append(0.0)
                         bin_sizes.append(len(bs))
-                # self.debug_log_file.close()    
-                # print("Gurobi model status", self.gmdl.status)
-                # print("The optimization failed\n")
-                # print("Computing computeIIS")
-                # self.gmdl.computeIIS()
-                # print("Computing computeIIS finished")            
-                # self.gmdl.write("model.ilp")
-                # return NotImplementedError 
         self.debug_log_file.close() 
         return percentages, bin_sizes
-    
+
+
+
     def optimize_milp_percent(self):
         assert len(self.constraint_matrices) == self.batch_size
         if self.batch_size <= 0:
@@ -357,31 +244,36 @@ class UAPLPtransformer:
         self.gmdl.update()
         self.gmdl.setObjective(p, grb.GRB.MINIMIZE)
         
-        self.constraint_time += time()
-        self.optimize_time = - time()
-        self.gmdl.optimize()
-        self.optimize_time += time()
-        
+        self.constraint_time += time.time()
+        self.optimize_time = - time.time()        
+        self.gmdl.optimize(softtime)
+        self.optimize_time += time.time()
+         
         if self.debug_mode is True:
             print("Here")
             self.gmdl.write("./debug_logs/model.lp")
             # self.gmdl.write("./debug_logs/out.sol")
         
-        if self.gmdl.status == 2:
+        if self.gmdl.status in [2, 6, 10]:
             self.debug_log_file.write(f"proportion {p.X}\n")
             # print(f"verified proportion {p.X}\n")
             self.debug_log_file.close()
-            return p.X
+            print("Final MIP gap value: %f" % self.gmdl.MIPGap)
+            print("Final ObjBound: %f" % self.gmdl.ObjBound)
+            return self.gmdl.ObjBound
         else:
             if self.gmdl.status == 4:
                 self.gmdl.setParam('PreDual',0)
                 self.gmdl.setParam('DualReductions', 0)
                 self.gmdl.optimize()
-            elif self.gmdl.status == 13 or self.gmdl.status == 9:
+            elif self.gmdl.status in [9, 11, 13]:
                 print("Suboptimal solution")
                 self.debug_log_file.close()
+                print("Final MIP gap value: %f" % self.gmdl.MIPGap)
+                print("Final MIP best value: %f" % p.X)
+                print("Final ObjBound: %f" % self.gmdl.ObjBound)
                 if self.gmdl.SolCount > 0:
-                    return p.X
+                    return self.gmdl.ObjBound
                 else:
                     return 0.0
             self.debug_log_file.close()    
@@ -401,9 +293,8 @@ class UAPLPtransformer:
         delta = self.gmdl.addMVar(self.xs[0].shape[0], lb = -self.eps, ub = self.eps, vtype=grb.GRB.CONTINUOUS, name='uap_delta')
         vs = [self.gmdl.addMVar(self.xs[i].shape[0], lb = self.xs[i].detach().numpy() - self.eps, ub = self.xs[i].detach().numpy() + self.eps, vtype=grb.GRB.CONTINUOUS, name=f'input_{i}') for i in range(self.batch_size)]
         # ensure all inputs are perturbed by the same uap delta.
-        if not self.monotone:
-            for i, v in enumerate(vs):
-                self.gmdl.addConstr(v == self.xs[i].detach().numpy() + delta)
+        for i, v in enumerate(vs):
+            self.gmdl.addConstr(v == self.xs[i].detach().numpy() + delta)
         # ds = [[self.gmdl.addMVar(self.xs[i].shape[0], lb= self.xs[i].detach().numpy() - self.xs[j].detach().numpy()-self.tolerence, ub=self.xs[i].detach().numpy() - self.xs[j].detach().numpy()+self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'input({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
         # for i in range(self.batch_size):
         #     for j in range(i+1, self.batch_size):
@@ -414,9 +305,9 @@ class UAPLPtransformer:
     def create_constraints(self):
         self.create_input_constraints()
         layers = self.mdl
+        
         for layer_idx, layer in enumerate(layers):
             layer_type = self.get_layer_type(layer)
-            #print('working on layer ', layer_idx, ' ', layer_type)
             if layer_type == LayerType.Linear:
                 self.linear_layer_idx += 1
                 self.create_linear_constraints(layer, layer_idx)
@@ -429,7 +320,7 @@ class UAPLPtransformer:
                 continue
             else:
                 raise TypeError(f"Unsupported Layer Type '{layer_type}'")
-
+    
     def create_vars(self, layer_idx, layer_type=''):
         if layer_type in ['linear', 'conv2d']:            
             vs = [self.gmdl.addMVar(self.x_lbs[i][self.linear_layer_idx].shape[0], lb = self.x_lbs[i][self.linear_layer_idx], ub = self.x_ubs[i][self.linear_layer_idx], vtype=grb.GRB.CONTINUOUS, name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
@@ -555,30 +446,137 @@ class UAPLPtransformer:
                                     
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
 
-    
-    def create_conv2d_constraints_helper(self, var, pre_var, num_kernel, output_h, 
+    # def handle_conv(model, var_list, start_counter, filters,biases,filter_size,input_shape, strides, out_shape, pad_top,
+    #             pad_left, pad_bottom, pad_right, lbi, ubi, use_milp, is_nchw=False):
+
+    # num_out_neurons = np.prod(out_shape)
+    # num_in_neurons = np.prod(input_shape)#input_shape[0]*input_shape[1]*input_shape[2]
+    # #print("filters", filters.shape, filter_size, input_shape, strides, out_shape, pad_top, pad_left)
+    # start = len(var_list)
+    # for j in range(num_out_neurons):
+    #     var_name = "x" + str(start+j)
+    #     var = model.addVar(vtype=GRB.CONTINUOUS, lb=lbi[j], ub =ubi[j], name=var_name)
+    #     var_list.append(var)
+
+    # #print("OUT SHAPE ", out_shape, input_shape, filter_size, filters.shape, biases.shape)
+    # if is_nchw:
+    #     for out_z in range(out_shape[1]):
+    #         for out_x in range(out_shape[2]):
+    #             for out_y in range(out_shape[3]):
+                
+    #                 dst_ind = out_z*out_shape[2]*out_shape[3] + out_x*out_shape[3] + out_y
+    #                 expr = LinExpr()
+    #                 #print("dst ind ", dst_ind)
+    #                 expr += -1*var_list[start+dst_ind]
+                    
+    #                 for inp_z in range(input_shape[0]):
+    #                     for x_shift in range(filter_size[0]):
+    #                         for y_shift in range(filter_size[1]):
+    #                             x_val = out_x*strides[0]+x_shift-pad_top
+    #                             y_val = out_y*strides[1]+y_shift-pad_left
+    #                             if(y_val<0 or y_val >= input_shape[2]):
+    #                                 continue
+    #                             if(x_val<0 or x_val >= input_shape[1]):
+    #                                 continue
+    #                             mat_offset = x_val*input_shape[2] + y_val + inp_z*input_shape[1]*input_shape[2]
+    #                             if(mat_offset>=num_in_neurons):
+    #                                 continue 
+    #                             src_ind = start_counter + mat_offset
+    #                             #print("src ind ", mat_offset)
+    #                             #filter_index = x_shift*filter_size[1]*input_shape[0]*out_shape[1] + y_shift*input_shape[0]*out_shape[1] + inp_z*out_shape[1] + out_z
+    #                             expr.addTerms(filters[out_z][inp_z][x_shift][y_shift],var_list[src_ind])
+                                                           
+    #                 expr.addConstant(biases[out_z])
+                    
+    #                 model.addConstr(expr, GRB.EQUAL, 0)  
+                      
+    # else:
+    #     for out_x in range(out_shape[1]):
+    #         for out_y in range(out_shape[2]):
+    #             for out_z in range(out_shape[3]):
+    #                 dst_ind = out_x*out_shape[2]*out_shape[3] + out_y*out_shape[3] + out_z
+    #                 expr = LinExpr()
+    #                 expr += -1*var_list[start+dst_ind]
+    #                 for inp_z in range(input_shape[2]):
+    #                     for x_shift in range(filter_size[0]):
+    #                         for y_shift in range(filter_size[1]):
+    #                             x_val = out_x*strides[0]+x_shift-pad_top
+    #                             y_val = out_y*strides[1]+y_shift-pad_left
+
+    #                             if(y_val<0 or y_val >= input_shape[1]):
+    #                                 continue
+
+    #                             if(x_val<0 or x_val >= input_shape[0]):
+    #                                 continue
+
+    #                             mat_offset = x_val*input_shape[1]*input_shape[2] + y_val*input_shape[2] + inp_z
+    #                             if(mat_offset>=num_in_neurons):
+    #                                 continue
+    #                             src_ind = start_counter + mat_offset
+    #                             #filter_index = x_shift*filter_size[1]*input_shape[2]*out_shape[3] + y_shift*input_shape[2]*out_shape[3] + inp_z*out_shape[3] + out_z
+    #                          #expr.addTerms(filters[filter_index],var_list[src_ind])
+    #                             expr.addTerms(filters[x_shift][y_shift][inp_z][out_z],var_list[src_ind])
+
+    #                 expr.addConstant(biases[out_z])
+    #                 model.addConstr(expr, GRB.EQUAL, 0)
+    # return start
+
+
+
+
+    def create_conv2d_constraints_helper(self, vars, pre_vars, num_kernel, output_h, 
                                          output_w, bias, weight, layer, input_h, input_w):
         out_idx = 0
+        gvars_array = [np.array(pre_var.tolist()).reshape((-1, input_h, input_w)) for pre_var in pre_vars]
+        # gvars_array = gvars_array.reshape((-1, input_h, input_w))
+        pre_lb_size = [None, None, input_h, input_w]
+
         for out_chan_idx in range(num_kernel):
             for out_row_idx in range(output_h):
                 for out_col_idx in range(output_w):
-                    lin_expr = bias[out_chan_idx].item()
+                    lin_expressions = [grb.LinExpr() for i in range(len(pre_vars))]
 
-                    for in_chan_idx in range(weight.shape[1]):
-                        for ker_row_idx in range(weight.shape[2]):
-                            in_row_idx = -layer.padding[0] + layer.stride[0] * out_row_idx + ker_row_idx
-                            if (in_row_idx < 0) or (in_row_idx == input_h):
-                                # This is padding -> value of 0
-                                continue
-                            for ker_col_idx in range(weight.shape[3]):
-                                in_col_idx = -layer.padding[1] + layer.stride[1] * out_col_idx + ker_col_idx
-                                if (in_col_idx < 0) or (in_col_idx == input_w):
-                                    # This is padding -> value of 0
-                                    continue
-                                coeff = layer.weight[out_chan_idx, in_chan_idx, ker_row_idx, ker_col_idx].item()
+                    for in_chan_idx in range(layer.weight.shape[1]):
 
-                                lin_expr += coeff * pre_var[in_chan_idx * (input_h * input_w) + in_row_idx * (input_w) + in_col_idx]
-                    self.gmdl.addConstr(var[out_idx] == lin_expr)
+                        # new version of conv layer for building mip by skipping kernel loops
+                        ker_row_min, ker_row_max = 0, layer.weight.shape[2]
+                        in_row_idx_min = -layer.padding[0] + layer.stride[0] * out_row_idx
+                        in_row_idx_max = -layer.padding[0] + layer.stride[0] * out_row_idx + layer.weight.shape[2] - 1
+                        if in_row_idx_min < 0: 
+                            ker_row_min = 0 - in_row_idx_min
+                        if in_row_idx_max >= pre_lb_size[2]: 
+                            ker_row_max = ker_row_max - in_row_idx_max + pre_lb_size[2] -1
+                        in_row_idx_min, in_row_idx_max = max(in_row_idx_min, 0), min(in_row_idx_max, pre_lb_size[2] - 1)
+
+                        ker_col_min, ker_col_max = 0, layer.weight.shape[3]
+                        in_col_idx_min = -layer.padding[1] + layer.stride[1] * out_col_idx
+                        in_col_idx_max = -layer.padding[1] + layer.stride[1] * out_col_idx + layer.weight.shape[3] - 1
+                        if in_col_idx_min < 0: ker_col_min = 0 - in_col_idx_min
+                        if in_col_idx_max >= pre_lb_size[3]: 
+                            ker_col_max = ker_col_max - in_col_idx_max + pre_lb_size[3] -1
+                        in_col_idx_min, in_col_idx_max = max(in_col_idx_min, 0), min(in_col_idx_max, pre_lb_size[3] - 1)
+
+                        coeffs = layer.weight[out_chan_idx, in_chan_idx, ker_row_min:ker_row_max, ker_col_min:ker_col_max].reshape(-1)
+                        for i, gvars in enumerate(gvars_array):
+                            gvar = gvars[in_chan_idx, in_row_idx_min:in_row_idx_max+1, in_col_idx_min:in_col_idx_max+1].reshape(-1)
+                            lin_expressions[i] += grb.LinExpr(coeffs, gvar)
+                    
+                    # for in_chan_idx in range(weight.shape[1]):
+                    #     for ker_row_idx in range(weight.shape[2]):
+                    #         in_row_idx = -layer.padding[0] + layer.stride[0] * out_row_idx + ker_row_idx
+                    #         if (in_row_idx < 0) or (in_row_idx == input_h):
+                    #             # This is padding -> value of 0
+                    #             continue
+                    #         for ker_col_idx in range(weight.shape[3]):
+                    #             in_col_idx = -layer.padding[1] + layer.stride[1] * out_col_idx + ker_col_idx
+                    #             if (in_col_idx < 0) or (in_col_idx == input_w):
+                    #                 # This is padding -> value of 0
+                    #                 continue
+                    #             coeff = layer.weight[out_chan_idx, in_chan_idx, ker_row_idx, ker_col_idx].item()
+
+                    #             lin_expr += coeff * pre_var[in_chan_idx * (input_h * input_w) + in_row_idx * (input_w) + in_col_idx]
+                    for i, var in enumerate(vars):
+                        self.gmdl.addConstr(var[out_idx] == lin_expressions[i] + bias[out_chan_idx].item())
                     out_idx += 1
 
 
@@ -600,11 +598,14 @@ class UAPLPtransformer:
 
         # Updated shape
         self.shape = (num_kernel, output_h, output_w)
-        for v_idx, v in enumerate(vs):
-            self.create_conv2d_constraints_helper(var=v, pre_var=self.gurobi_variables[-1]['vs'][v_idx],
-                                                  num_kernel=num_kernel, output_h=output_h, output_w=output_w,
+        # for v_idx, v in enumerate(vs):
+        #     self.create_conv2d_constraints_helper(var=v, pre_var=self.gurobi_variables[-1]['vs'][v_idx],
+        #                                           num_kernel=num_kernel, output_h=output_h, output_w=output_w,
+        #                                           bias=bias, weight=weight, layer=layer, input_h=input_h, input_w=input_w)
+        self.create_conv2d_constraints_helper(vars=vs, pre_vars=self.gurobi_variables[-1]['vs'],
+                                                   num_kernel=num_kernel, output_h=output_h, output_w=output_w,
                                                   bias=bias, weight=weight, layer=layer, input_h=input_h, input_w=input_w)
-        
+
         if self.track_differences is True:
             for i in range(self.batch_size):
                 for j in range(i+1, self.batch_size):

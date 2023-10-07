@@ -67,8 +67,10 @@ MNIST_LINEAR_100 = "mnist_relu_3_100.onnx"
 MNIST_LINEAR_6_100 = "mnist_relu_6_100.onnx"
 MNIST_LINEAR_9_200 = "mnist_relu_9_200.onnx"
 
+MNIST_CONV_PGD = "mnistconvSmallRELU__PGDK.onnx"
 MNIST_CONV_SMALL = 'mnist_convSmallRELU__Point.onnx'
 MNIST_FFN_PGD = "mnistconvSmallRELU__PGDK.onnx"
+MNIST_CONV_SMALL_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
 MNIST_FFN_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
 MNIST_CONV_MED = 'mnistconvMedGRELU__Point.onnx'
 MNIST_CONV_BIG = 'mnistconvBigRELU__DiffAI.onnx'
