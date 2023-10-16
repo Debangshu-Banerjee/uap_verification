@@ -23,7 +23,7 @@ class UapAnalysisArgs:
                  radius_r=0.3, uap_mode=UAPMode.RADIUS, cutoff_percentage = 0.5,
                  compute_proportion=False, no_lp_for_verified=False, write_file = False, 
                  debug_mode=False, track_differences=True, monotone_prop = None, monotone_inv = False, 
-                 lp_formulation_threshold=2) -> None:
+                 lp_formulation_threshold=2, try_image_smoothing=False, filter_threshold=None) -> None:
         self.individual_prop_domain = individual_prop_domain
         self.domain = domain
         self.baseline_domain = baseline_domain
@@ -49,7 +49,11 @@ class UapAnalysisArgs:
         self.monotone_prop = monotone_prop
         self.monotone_inv = monotone_inv
         self.lp_formulation_threshold = lp_formulation_threshold
-        # if debug mode on rewrite params
+        self.try_image_smoothing = try_image_smoothing
+        self.filter_threshold = filter_threshold
+        # Always use all layer substitution for DiffPoly.
+        self.all_layer_sub = True
+        # if debug mode on rewrite params.
         if debug_mode == True:
             self.count = 1
             self.count_per_prop = 2
@@ -63,7 +67,11 @@ def UapVerification(uap_verification_args: UapAnalysisArgs):
     props, _ = specs.get_specs(uap_verification_args.dataset, spec_type=uap_verification_args.spec_type,
                                     count=total_local_prop_count, eps=uap_verification_args.eps, 
                                     sink_label=uap_verification_args.sink_label,
-                                    debug_mode=uap_verification_args.debug_mode, monotone_prop = uap_verification_args.monotone_prop, monotone_inv = uap_verification_args.monotone_inv)
+                                    debug_mode=uap_verification_args.debug_mode, 
+                                    monotone_prop = uap_verification_args.monotone_prop, 
+                                    monotone_inv = uap_verification_args.monotone_inv, 
+                                    try_input_smoothing=uap_verification_args.try_image_smoothing,
+                                    count_per_prop=uap_verification_args.count_per_prop)
     if uap_verification_args.uap_mode is UAPMode.RADIUS:
         UapVerifiedRadiusBackend(props=props, uap_verification_args=uap_verification_args)
     elif uap_verification_args.uap_mode is UAPMode.VERIFICATION:

@@ -1,8 +1,16 @@
 from src.common import Status
 import torch
 
+class LP_TIMINGS:
+    def __init__(self, total_time, constraint_formulation_time, optimization_time):
+        self.total_time = total_time
+        self.constraint_formulation_time = constraint_formulation_time
+        self.optimization_time = optimization_time
+
 class UAPSingleRes:
-    def __init__(self, domain, input_per_prop, status, global_lb, time_taken, verified_proportion, constraint_time = None, optimize_time = None, bin_size = None):
+    def __init__(self, domain, input_per_prop, status, global_lb, 
+                 time_taken, verified_proportion, constraint_time = None, 
+                 optimize_time = None, bin_size = None, timings=None):
         self.domain = domain
         self.status = status
         self.input_per_prop = input_per_prop
@@ -12,6 +20,8 @@ class UAPSingleRes:
         self.constraint_time = constraint_time
         self.optimize_time = optimize_time
         self.bin_size = bin_size
+        # Holds the final timings of the entire analysis.
+        self.timings = timings
 
     def print(self):
         print("Domain ", self.domain)
@@ -22,9 +32,12 @@ class UAPSingleRes:
         print("Verified proportion", self.verified_proportion)
 
 class UAPResult:
-    def __init__(self, UAP_res, baseline_res, individual_res = None, targeted = False, times = None, props = None, monotone = False):
+    def __init__(self, UAP_res, baseline_res, individual_res = None, result_with_no_diff=None,
+                targeted = False, times = None, props = None, monotone = False, individual_time=None):
         self.baseline_res = baseline_res
+        self.individual_time = individual_time
         self.UAP_res = UAP_res
+        self.result_with_no_diff = result_with_no_diff
         self.individual_res = individual_res
         self.times = times
         self.targeted = targeted
@@ -42,39 +55,57 @@ class UAPResultList:
         count = args.count
         individual_verified_count = 0
         baseline_verified_count = 0
+        uap_verified_without_diff = 0
         uap_verified_count = 0
-        times = [0, 0, 0, 0, 0]        
-        filename = args.output_dir + f'{args.net_name}.dat'#_{args.count_per_prop}_{args.count}_{args.eps}.dat'
+        times = [0, 0, 0, 0]        
+        filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}.dat'
         file = open(filename, 'a+')
         for i, res in enumerate(self.result_list):
             individual_res = res.individual_res
             baseline_res = res.baseline_res
+            uap_no_diff_res = res.result_with_no_diff
             UAP_res = res.UAP_res
-            #file.write(f'\nProperty No. {i}\n\n')
             if individual_res is not None:
                 veri = sum([torch.min(res.final_lb) >= 0 for res in individual_res])
                 individual_verified_count += veri
-                #file.write(f"individual verified proportion {veri/args.count_per_prop}\n")
-            if baseline_res.verified_proportion is not None:
+                if res.individual_time is not None:
+                    times[0] += res.individual_time
+            if baseline_res is not None and baseline_res.verified_proportion is not None:
                 baseline_verified_count += baseline_res.verified_proportion * args.count_per_prop
-                #file.write(f"baseline verified proportion {baseline_res.verified_proportion}\n")
-            if UAP_res.verified_proportion is not None:
+                if times[1] is not None and baseline_res.timings is not None:
+                    times[1] += baseline_res.timings.total_time
+            if uap_no_diff_res is not None and uap_no_diff_res.verified_proportion is not None:
+                uap_verified_without_diff += uap_no_diff_res.verified_proportion * args.count_per_prop
+                if times[2] is not None and uap_no_diff_res.timings is not None:
+                    times[2] += uap_no_diff_res.timings.total_time
+            if UAP_res is not None and UAP_res.verified_proportion is not None:
                 uap_verified_count += UAP_res.verified_proportion * args.count_per_prop
-                #file.write(f"Uap verified proportion {UAP_res.verified_proportion}\n")
-            if res.times is not None:
-                times[0] += res.times[0]
-                times[1] += res.times[0] + res.times[1]
-                times[2] += res.times[0] + res.times[2]
-                times[3] += 0 if res.times[3] is None else res.times[3]
-                times[4] += 0 if res.times[4] is None else res.times[4]
-                file.write(f'Times: {res.times}\n')
+                if times[3] is not None and UAP_res.timings is not None:
+                    times[3] += UAP_res.timings.total_time    
+        for t in times:
+            if t is not None and count > 0:
+                t /= count
+
         file.write(f'\n\n\nEps : {args.eps}\n')
         file.write(f'Individual verified: {individual_verified_count}\n')
         file.write(f'Baseline verified: {baseline_verified_count}\n')
+        file.write(f'Uap no diff verified {uap_verified_without_diff if uap_no_diff_res is not None and uap_no_diff_res.verified_proportion is not None else "x"}\n')
         file.write(f'Uap verified: {uap_verified_count}\n')
         file.write(f'Extra verified: {uap_verified_count - baseline_verified_count}\n')
-        file.write(f'times: {times}\n')
-        file.close()  
+        file.write(f'Extra diff verified {uap_verified_count - uap_verified_without_diff}\n')
+        file.write(f'Avg. times {times}\n')
+
+        # Write the formulation and optimization times.
+        file.write('\n\n\n')
+        if uap_no_diff_res is not None and uap_no_diff_res.timings is not None:
+            file.write(f'No diff constraint time {uap_no_diff_res.timings.constraint_formulation_time}\n')
+            file.write(f'No diff optimization time {uap_no_diff_res.timings.optimization_time}\n')
+
+        if UAP_res is not None and UAP_res.timings is not None:
+            file.write(f'With diff constraint time {UAP_res.timings.constraint_formulation_time}\n')
+            file.write(f'With diff optimization time {UAP_res.timings.optimization_time}\n')
+
+        file.close()
 
     def analyze_monotone(self, args):
         diff_verified_count = 0
@@ -87,11 +118,6 @@ class UAPResultList:
             UAP_res = res.UAP_res
             if UAP_res.status == Status.VERIFIED:
                 diff_verified_count += 1
-            # if args.monotone_inv:
-            #     lp_verified_count += 1 if UAP_res.verified_proportion >= 0 else 0
-            # else:
-            #     lp_verified_count += 1 if UAP_res.verified_proportion <= 0 else 0
-            #file.write(f"diff verified: {UAP_res.verified_proportion >= 0}\n")
             times += res.times
         file.write(f'\n\n\nEps : {args.eps}\n')
         file.write(f'Diff verified: {diff_verified_count}\n')
@@ -104,8 +130,11 @@ class UAPResultList:
         individual_verified_count = torch.zeros(10)
         baseline_verified_count = torch.zeros(10)
         uap_verified_count = torch.zeros(10)
-        times = [0, 0, 0, 0, 0]        
-        filename = args.output_dir + f'target_{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}.dat'
+        times = [0, 0, 0, 0, 0]
+        diff = ''
+        if args.track_differences is True:
+            diff = '_diff'        
+        filename = args.output_dir + f'target_{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}{diff}.dat'
         file = open(filename, 'a+')
         for i, res in enumerate(self.result_list):
             individual_res = res.individual_res

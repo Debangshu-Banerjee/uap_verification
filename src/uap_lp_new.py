@@ -20,7 +20,8 @@ def softtime(model, where):
 
 class UAPLPtransformer:
     def __init__(self, mdl, xs, eps, x_lbs, x_ubs, d_lbs, d_ubs, 
-                 constraint_matrices, debug_mode=False, track_differences=True, props=None, monotone = False):
+                 constraint_matrices, debug_mode=False, track_differences=True, 
+                 props=None, monotone = False, args=None):
         self.mdl = mdl
         self.xs = xs
         self.batch_size = len(xs)
@@ -52,6 +53,7 @@ class UAPLPtransformer:
         self.monotone = monotone
         self.constraint_time = None
         self.optimize_time = None
+        self.args = args
     
     def set_shape(self):
         if self.input_size == 784:
@@ -81,6 +83,7 @@ class UAPLPtransformer:
 
 
     def optimize_lp(self):
+        # print(f'matrices length {len(self.constraint_matrices)} batch size {self.batch_size}')
         assert len(self.constraint_matrices) == self.batch_size
         if self.batch_size <= 0:
             return 0.0
@@ -123,7 +126,7 @@ class UAPLPtransformer:
                 print("Suboptimal solution")
                 self.debug_log_file.close()
                 if self.gmdl.SolCount > 0:
-                    return problem_min.X
+                    return self.gmdl.ObjBound
                 else:
                     return 0.0
             print("Gurobi gmndl status", self.gmdl.status)
@@ -142,6 +145,8 @@ class UAPLPtransformer:
     def optimize_targeted(self):
         percentages = []
         bin_sizes = []
+        if self.batch_size <= 0:
+            return 0.0
         for j in range(10):
             bs = []
             final_vars = []
@@ -270,7 +275,10 @@ class UAPLPtransformer:
                 print("Suboptimal solution")
                 self.debug_log_file.close()
                 print("Final MIP gap value: %f" % self.gmdl.MIPGap)
-                print("Final MIP best value: %f" % p.X)
+                try:
+                    print("Final MIP best value: %f" % p.X)
+                except:
+                    print("No solution obtained")
                 print("Final ObjBound: %f" % self.gmdl.ObjBound)
                 if self.gmdl.SolCount > 0:
                     return self.gmdl.ObjBound
@@ -313,6 +321,8 @@ class UAPLPtransformer:
                 self.create_linear_constraints(layer, layer_idx)
             elif layer_type == LayerType.ReLU:
                 self.create_relu_constraints(layer_idx)
+                if self.args is not None and self.args.all_layer_sub is True:
+                    self.linear_layer_idx += 1
             elif layer_type == LayerType.Conv2D:
                 self.linear_layer_idx += 1                
                 self.create_conv2d_constraints(layer, layer_idx)
@@ -322,13 +332,16 @@ class UAPLPtransformer:
                 raise TypeError(f"Unsupported Layer Type '{layer_type}'")
     
     def create_vars(self, layer_idx, layer_type=''):
+        ds = None
         if layer_type in ['linear', 'conv2d']:            
             vs = [self.gmdl.addMVar(self.x_lbs[i][self.linear_layer_idx].shape[0], lb = self.x_lbs[i][self.linear_layer_idx], ub = self.x_ubs[i][self.linear_layer_idx], vtype=grb.GRB.CONTINUOUS, name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
-            ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], lb=self.d_lbs[(i, j)][self.linear_layer_idx] - self.tolerence, ub=self.d_ubs[(i, j)][self.linear_layer_idx] + self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
+            if self.track_differences is True:
+                ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], lb=self.d_lbs[(i, j)][self.linear_layer_idx] - self.tolerence, ub=self.d_ubs[(i, j)][self.linear_layer_idx] + self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
         elif layer_type == 'relu':
             vs = [self.gmdl.addMVar(self.x_lbs[i][self.linear_layer_idx].shape[0], lb =np.maximum(self.x_lbs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])),
                                      ub = np.maximum(self.x_ubs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])), vtype=grb.GRB.CONTINUOUS, name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
-            ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], lb=np.maximum(self.x_lbs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])) - np.maximum(self.x_ubs[j][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])),
+            if self.track_differences is True:
+                ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], lb=np.maximum(self.x_lbs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])) - np.maximum(self.x_ubs[j][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])),
                                      ub=np.maximum(self.x_ubs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])) - np.maximum(self.x_lbs[j][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])),
                                       vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
         else:

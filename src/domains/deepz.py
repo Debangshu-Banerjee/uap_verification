@@ -68,18 +68,18 @@ class ZonoTransformer:
 
 
     
-    def populate_baseline_verifier_result(self):
+    def populate_baseline_verifier_result(self, args=None):
         final_lb = self.compute_lb()
         final_ub = self.compute_ub()
         if self.targeted:
             target_ubs = self.compute_target_ubs()
         else:
             target_ubs = None
-        #print(f'output: {self.prop.output_constr_mat()}')
-        #print(f'test: {torch.tensor([1.0, 2, 3, 4, 5, 6, 7, 100, 9, 10]) @ self.prop.output_constr_mat()}')
-        # print(f'linear centers: {self.linear_centers}')
-        # print(f'linear coefs: {self.linear_coefs}')
-        layer_lbs, layer_ubs = self.get_all_linear_bounds_wt_constraints()
+        if args is None or args.all_layer_sub is False:
+            layer_lbs, layer_ubs = self.get_all_linear_bounds_wt_constraints()            
+        else:
+            layer_lbs, layer_ubs = self.get_all_bounds_wt_constraints()    
+
         layer_lbs.append(self.ilb)
         layer_ubs.append(self.iub)
         
@@ -201,6 +201,18 @@ class ZonoTransformer:
             ubs.append(ub)
 
         # update bounds without constraints.
+        lbs.pop()
+        ubs.pop()
+        coef_abs = torch.sum(torch.abs(self.final_layer_without_constr_coef), dim=0)
+        lb = self.final_layer_without_constr_center - coef_abs
+        ub = self.final_layer_without_constr_center + coef_abs
+        lbs.append(lb)
+        ubs.append(ub)
+        return lbs, ubs
+    
+    def get_all_bounds_wt_constraints(self):
+        lbs, ubs = self.get_all_bounds()
+        lbs, ubs = lbs[1:], ubs[1:]
         lbs.pop()
         ubs.pop()
         coef_abs = torch.sum(torch.abs(self.final_layer_without_constr_coef), dim=0)

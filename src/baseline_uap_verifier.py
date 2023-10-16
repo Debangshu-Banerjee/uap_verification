@@ -20,7 +20,7 @@ class BaselineAnalyzerBackend:
             assert prop.get_input_clause_count() == 1
             transformer = domain_transformer(net=self.net, prop=prop.get_input_clause(0), domain=self.args.individual_prop_domain)
             #print(transformer.get_all_bounds())
-            baseline_res = transformer.populate_baseline_verifier_result()
+            baseline_res = transformer.populate_baseline_verifier_result(args=self.args)
             time_diff = time.time() - start_time
             baseline_res.time = time_diff
             baseline_results.append(baseline_res)

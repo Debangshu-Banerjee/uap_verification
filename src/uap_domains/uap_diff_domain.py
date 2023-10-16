@@ -26,7 +26,6 @@ class UapDiff:
         #self.eps = baseline_results[0].eps
 
     def compute_difference_dict(self, monotone = False):
-        #print('hi', len(self.baseline_results))
         for i in range(len(self.baseline_results)):
             for j in range(i+1, len(self.baseline_results)):
                 result1 = self.baseline_results[i]
@@ -40,12 +39,16 @@ class UapDiff:
                 with torch.no_grad():
                     diff_poly_ver = DiffDeepPoly(input1=input1, input2=input2, net=self.net, 
                                 lb_input1=input1_lbs, ub_input1=input1_ubs,
-                                lb_input2=input2_lbs, ub_input2=input2_ubs, device='cpu', noise_ind = self.noise_ind, eps = self.eps, monotone = monotone)
+                                lb_input2=input2_lbs, ub_input2=input2_ubs, device='cpu', 
+                                noise_ind = self.noise_ind, eps = self.eps, 
+                                monotone = monotone, use_all_layers=self.args.all_layer_sub)
                     delta_lbs, delta_ubs = diff_poly_ver.run()
                 self.difference_lbs_dict[(i, j)] = delta_lbs
                 self.difference_ubs_dict[(i, j)] = delta_ubs
-            self.input_list.append(self.baseline_results[i].input)
-            
+
+    def populate_input_list(self):
+        for baseline_res in self.baseline_results:
+            self.input_list.append(baseline_res.input)
 
     def populate_lbs_and_ubs(self):
         for i in range(len(self.baseline_results)):
@@ -71,6 +74,8 @@ class UapDiff:
         new_props = []
         new_baseline_results = []
         threshold = self.get_negative_threshold()
+        if self.args.filter_threshold is not None:
+            threshold = max(threshold, self.args.filter_threshold)
         for i, prop in enumerate(self.props):
             lb = torch.min(self.baseline_results[i].final_lb)
             if  lb >= 0.0 or lb <= threshold:
@@ -86,9 +91,14 @@ class UapDiff:
         start_time = time.time()
         if self.no_lp_for_verified == True and not targeted and not monotone:
             self.prune_verified_props()
-        self.populate_lbs_and_ubs()        
-        self.compute_difference_dict(monotone = monotone)
-        
+        # Do not invoke diffPoly if the diff constraints is disabled.
+        if diff:
+            self.compute_difference_dict(monotone = monotone)
+        self.populate_input_list()
+        self.populate_lbs_and_ubs()
+        # if len(self.input_lbs) > 0:
+        #     print(f'input lb {self.input_lbs[0][-2]}')
+        #     print(f'input ub {self.input_ubs[0][-2]}')
         if monotone:
             verified_status = Status.UNKNOWN
             print(self.difference_lbs_dict[(0,1)][-1], self.difference_ubs_dict[(0,1)][-1])
@@ -123,14 +133,15 @@ class UapDiff:
                                                 x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
                                                 d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
                                                 debug_mode=self.args.debug_mode,
-                                                track_differences=False, props = self.props, monotone = monotone)
+                                                track_differences=False, props = self.props, monotone = monotone, args=self.args)
         else:
             uap_lp_transformer = UAPLPtransformer(mdl=self.net, xs=self.input_list, 
                                                 eps=self.eps, x_lbs=self.input_lbs,
                                                 x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
                                                 d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
                                                 debug_mode=self.args.debug_mode,
-                                                track_differences=self.args.track_differences, props = self.props, monotone = monotone)
+                                                track_differences=self.args.track_differences, props = self.props, 
+                                                monotone = monotone, args=self.args)
         
         # Formulate the Lp problem.
         lp_start_time = time.time()
@@ -167,26 +178,6 @@ class UapDiff:
                 print("Diff Verified percentages", verified_percentages)
                 if verified_percentages >= self.args.cutoff_percentage:
                     verified_status = Status.VERIFIED
-            
-        # print(f'lp build time {time.time() - lp_start_time}')
-        # verified_percentages = None
-        # global_lb = None
-        # verified_status = Status.UNKNOWN
-        # lp_optimize_start_time = time.time()
-        # if proportion == False:
-        #     global_lb = uap_lp_transformer.optimize_lp()
-        #     print("Diff global lb", global_lb)
-        #     if global_lb >= 0.0:
-        #         verified_status = Status.VERIFIED            
-        # else:
-        #     verified_percentages = uap_lp_transformer.optimize_milp_percent()
-        #     # verified_percentages = 0.0 ##-- just commenting it out to run faster 
-        #     verified_props = verified_percentages * len(self.props)
-        #     verified_percentages = (verified_props + self.baseline_verified_props) / self.total_props
-        #     print("Diff Verified percentages", verified_percentages)
-        #     if verified_percentages >= self.args.cutoff_percentage:
-        #         verified_status = Status.VERIFIED
-        # print(f'lp optimize time {time.time() - lp_optimize_start_time}')
 
         time_taken = time.time() - start_time
         return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,

@@ -258,7 +258,9 @@ def process_input_for_binary(inputs, labels, target_count=0):
     new_labels = torch.stack(new_labels)
     return new_inputs, new_labels
 
-def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_label=None, debug_mode=False, monotone_prop = None, monotone_inv = False):
+def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, 
+              sink_label=None, debug_mode=False, monotone_prop = None, 
+              monotone_inv = False, try_input_smoothing=False, count_per_prop=None):
     if debug_mode == True:
         return generate_debug_specs(count=count, eps=eps)
     if dataset == Dataset.MNIST or dataset == Dataset.CIFAR10:
@@ -282,14 +284,26 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, sink_
             specs_per_patch = pos_patch_count
             # labels = labels.unsqueeze(1).repeat(1, pos_patch_count).flatten()
         elif spec_type == InputSpecType.UAP:
+            if try_input_smoothing is True:
+                count //= count_per_prop
             testloader = prepare_data(dataset, batch_size=count)
             inputs, labels = next(iter(testloader))
-            # For untargeted uap we reuse the linf specs.
-            #print(inputs.shape, labels.shape)
+            if try_input_smoothing is True:
+                torch.manual_seed(1000)
+                inputs = inputs.repeat_interleave(count_per_prop, dim=0)
+                inputs += torch.rand(inputs.size()) * (eps / 20.0) 
+                labels = labels.repeat_interleave(count_per_prop, dim=0)
             props = get_linf_spec(inputs, labels, eps, dataset)
         elif spec_type == InputSpecType.UAP_TARGETED:
+            if try_input_smoothing is True:
+                count //= count_per_prop
             testloader = prepare_data(dataset, batch_size=2*count)
             inputs, labels = next(iter(testloader))
+            if try_input_smoothing is True:
+                torch.manual_seed(1000)
+                inputs = inputs.repeat_interleave(count_per_prop, dim=0)
+                inputs += torch.rand(inputs.size()) * (eps / 4.5) 
+                labels = labels.repeat_interleave(count_per_prop, dim=0)
             inputs, labels = process_input_for_sink_label(inputs=inputs, labels=labels, 
                                                           sink_label=sink_label, target_count=count)
             props = get_targeted_UAP_spec(inputs, eps, dataset, sink_label=torch.tensor(sink_label))
