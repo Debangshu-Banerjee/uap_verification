@@ -527,6 +527,12 @@ class ZonoTransformer:
         self.set_zono(center, cof)
         #print(f'test: {center, cof}')
         return self
+    
+    def handle_sigmoid(self, layer):
+        raise NotImplementedError('Sigmoid is not implemented for DeepZ')
+
+    def handle_tanh(self, layer):
+        raise NotImplementedError('Tanh is not implemented for DeepZ')
 
     def verify_robustness(self, y, true_label):
         pass

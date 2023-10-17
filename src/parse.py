@@ -2,7 +2,7 @@ import torch
 import src.common as common
 import src.util as util
 
-from torch.nn import ReLU, Linear, Conv2d, Flatten
+from torch.nn import ReLU, Linear, Conv2d
 
 from src.domains.lptransformer import LPTransformer
 from onnx import numpy_helper
@@ -28,7 +28,6 @@ def forward_layers(net, relu_mask, transformers):
             transformers.handle_relu(layer)
         elif layer.type == LayerType.Linear:
             if layer == net[-1]:
-                print(type(layer))
                 transformers.handle_linear(layer, last_layer=True)
             else:
                 transformers.handle_linear(layer)
@@ -36,6 +35,8 @@ def forward_layers(net, relu_mask, transformers):
             transformers.handle_conv2d(layer)
         elif layer.type == LayerType.Normalization:
             transformers.handle_normalization(layer)
+        elif layer.type == LayerType.Sigmoid:
+            transformers.handle_sigmoid(layer)
     return transformers
 
 
@@ -49,7 +50,7 @@ def parse_onnx_layers(net):
 
     final_relu = False
     for cur_layer in range(num_layers):
-        final_relu = False
+        final_activation = False  
         node = net.graph.node[cur_layer]
         operation = node.op_type
         nd_inps = node.input
@@ -78,8 +79,13 @@ def parse_onnx_layers(net):
             layers.append(layer)
 
         elif operation == 'Relu':
-            final_relu = True
+            final_activation = True
             layers.append(Layer(type=LayerType.ReLU))
+
+        elif operation == 'Sigmoid':
+            final_activation = True
+            layers.append(Layer(type=LayerType.Sigmoid))
+
         
         # Handle operation Sigmoid and TanH.
     

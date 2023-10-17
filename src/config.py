@@ -74,6 +74,7 @@ MNIST_CONV_SMALL_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
 MNIST_FFN_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
 MNIST_CONV_MED = 'mnistconvMedGRELU__Point.onnx'
 MNIST_CONV_BIG = 'mnistconvBigRELU__DiffAI.onnx'
+MNIST_CONV_SIGMOID = 'convMedGSIGMOID__PGDK_w_0.3.onnx'
 
 
 # MNIST crown-ibp network

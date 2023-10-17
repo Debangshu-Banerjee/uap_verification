@@ -73,17 +73,18 @@ class DeepPolyTransformerOptimized:
                                      ub_bias=ub_bias, ub_coef=ub_coef)
         return diff_struct
     
-    def analyze_conv(self, diff_struct, layer):
+    def analyze_conv(self, diff_struct, layer, layer_idx):
         # layer = self.layers[-1]
         conv_weight=layer.weight
         conv_bias=layer.bias
-        preconv_shape= self.shapes[len(self.layers) - 1]
-        postconv_shape= self.shapes[len(self.layers)]
+        preconv_shape= self.shapes[layer_idx]
+        postconv_shape= self.shapes[layer_idx + 1]
         stride= layer.stride 
         padding= layer.padding 
         groups=1 
-        dilation=layer.dilation
+        dilation=(1, 1)
         kernel_hw = conv_weight.shape[-2:]
+
         h_padding = (preconv_shape[1] + 2 * padding[0] - 1 - dilation[0] * (kernel_hw[0] - 1)) % stride[0]
         w_padding = (preconv_shape[2] + 2 * padding[1] - 1 - dilation[1] * (kernel_hw[1] - 1)) % stride[1]
         output_padding = (h_padding, w_padding)
@@ -98,6 +99,10 @@ class DeepPolyTransformerOptimized:
                             output_padding, groups, dilation)
         ub_coef = F.conv_transpose2d(ub_coef, conv_weight, None, stride, padding,
                             output_padding, groups, dilation)
+        
+        lb_coef = lb_coef.view((coef_shape[0], -1))
+        ub_coef = ub_coef.view((coef_shape[0], -1))
+        
         diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, ub_bias=ub_bias, ub_coef=ub_coef)
         return diff_struct
 
@@ -178,7 +183,7 @@ class DeepPolyTransformerOptimized:
         lb = None
         ub = None
         # print(f"Layers {self.layers}")
-        print(f'\n\nlayers length {layers_length} shapes length {len(self.shapes)}')
+        # print(f'\n\nlayers length {layers_length} shapes length {len(self.shapes)}')
         for i in reversed(range(layers_length)):
             layer = self.layers[i]
             # concretize the bounds.
@@ -202,12 +207,12 @@ class DeepPolyTransformerOptimized:
             if layer.type is LayerType.Linear:
                 diff_struct = self.analyze_linear(diff_struct=diff_struct, layer=layer)
             elif layer.type is LayerType.Conv2D:
-                diff_struct = self.analyze_conv(diff_struct=diff_struct, layer=layer)
+                diff_struct = self.analyze_conv(diff_struct=diff_struct, layer=layer, layer_idx=i)
             elif layer.type is LayerType.ReLU:
                 diff_struct = self.analyze_relu(diff_struct=diff_struct, layer_idx=i)
             else:
                 raise ValueError(f'Unsupported Layer {layer.type}')
-            self.print_shapes(diff_struct=diff_struct)
+            # self.print_shapes(diff_struct=diff_struct)
 
         curr_lb, curr_ub = self.concrete_substitution(diff_struct=diff_struct, 
                                                     lb_layer=self.ilb, ub_layer=self.iub)
@@ -233,13 +238,13 @@ class DeepPolyTransformerOptimized:
         self.update_shape(layer=layer)
         return self.back_propagation()
 
-    def handle_tanh(self, layer):
-        pass
-
     def handle_sigmoid(self, layer):
-        pass
+        raise NotImplementedError('Sigmoid is not implemented for DeepPoly')
 
-    
+    def handle_tanh(self, layer):
+        raise NotImplementedError('Tanh is not implemented for DeepPoly')
+
+
     def remove_non_affine_bounds(self):
         new_lbs = []
         new_ubs = []
@@ -256,7 +261,8 @@ class DeepPolyTransformerOptimized:
         bias = self.prop.output_constr_const()
         if isinstance(bias, int):
             bias = torch.tensor([float(bias)], device=self.device)
-        print("Here")
+        if bias.shape[0] != weight.shape[0]:
+            bias = torch.zeros(weight.shape[0], device=self.device)
         layer = Layer(weight=weight, bias=bias, type=LayerType.Linear)
         diff_struct = self.handle_linear(layer=layer)
         if args is not None and args.all_layer_sub is False: 
