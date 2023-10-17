@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
-from src.common.network import LayerType
-from src.util import compute_input_shapes
+from src.common.network import LayerType, Layer
+from src.baseline_uap_verifier_res import BaselineVerifierRes
 
 
 class DeepPolyStruct:
@@ -19,11 +19,12 @@ class DeepPolyStruct:
 
 
 class DeepPolyTransformerOptimized:
-    def __init__(self, prop, device=''):
+    def __init__(self, prop, complete=False, device=None):
         self.lbs = []
         self.ubs = []
         self.prop = prop
         self.layers = []
+        self.complete = complete
         # keep track of the final lb coef and bias
         # this will be used in baseline LP formulation.
         self.final_lb_coef = None
@@ -34,6 +35,7 @@ class DeepPolyTransformerOptimized:
         self.ilb = prop.input_lb
         self.iub = prop.input_ub
         self.input_shape = None
+        self.eps = torch.sum(self.iub - self.ilb)
         # Tracking shpes for supporting conv layers.
         self.shapes = []
         if self.size == 784:
@@ -45,30 +47,97 @@ class DeepPolyTransformerOptimized:
             self.shape = (1, 1, 2)
         self.shapes.append(self.shape)
 
-        self.device = device
+        self.device = device if device is not None else 'cpu'
 
+    def pos_neg_weight_decomposition(self, coef):
+        neg_comp = torch.where(coef < 0, coef, torch.zeros_like(coef, device=self.device))
+        pos_comp = torch.where(coef >= 0, coef, torch.zeros_like(coef, device=self.device))
+        return neg_comp, pos_comp
     
-    def concrete_substitution(self, diff_struct):
-        lb = 
+    def concrete_substitution(self, diff_struct, lb_layer, ub_layer):
+        neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(diff_struct.lb_coef)
+        neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(diff_struct.ub_coef)
+        lb = neg_comp_lb @ ub_layer + pos_comp_lb @ lb_layer + diff_struct.lb_bias
+        ub = neg_comp_ub @ lb_layer + pos_comp_ub @ ub_layer + diff_struct.ub_bias        
+        assert torch.all(lb <= ub + 1e-6)
+        return lb, ub    
     
-    def analyze_linear(self, linear_wt, bias, diff_struct):
-        pass
-    
-    def analyze_conv(self, diff_struct):
-        pass
+    def analyze_linear(self, diff_struct, layer):
+        # layer = self.layers[-1]
+        lb_coef = diff_struct.lb_coef.matmul(layer.weight)
+        lb_bias = diff_struct.lb_bias + diff_struct.lb_coef.matmul(layer.bias)
+        ub_coef = diff_struct.ub_coef.matmul(layer.weight)
+        ub_bias = diff_struct.ub_bias + diff_struct.ub_coef.matmul(layer.bias)
 
-    def analyze_relu(self, diff_struct):
-        pass 
+        diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, 
+                                     ub_bias=ub_bias, ub_coef=ub_coef)
+        return diff_struct
+    
+    def analyze_conv(self, diff_struct, layer):
+        # layer = self.layers[-1]
+        conv_weight=layer.weight
+        conv_bias=layer.bias
+        preconv_shape= self.shapes[len(self.layers) - 1]
+        postconv_shape= self.shapes[len(self.layers)]
+        stride= layer.stride 
+        padding= layer.padding 
+        groups=1 
+        dilation=layer.dilation
+        kernel_hw = conv_weight.shape[-2:]
+        h_padding = (preconv_shape[1] + 2 * padding[0] - 1 - dilation[0] * (kernel_hw[0] - 1)) % stride[0]
+        w_padding = (preconv_shape[2] + 2 * padding[1] - 1 - dilation[1] * (kernel_hw[1] - 1)) % stride[1]
+        output_padding = (h_padding, w_padding)
+
+        coef_shape = diff_struct.lb_coef.shape
+        lb_coef = diff_struct.lb_coef.view((coef_shape[0], *postconv_shape))
+        ub_coef = diff_struct.ub_coef.view((coef_shape[0], *postconv_shape))
+        lb_bias = diff_struct.lb_bias + (lb_coef.sum((2, 3)) * conv_bias).sum(1)
+        ub_bias = diff_struct.ub_bias + (ub_coef.sum((2, 3)) * conv_bias).sum(1)
+
+        lb_coef = F.conv_transpose2d(lb_coef, conv_weight, None, stride, padding,
+                            output_padding, groups, dilation)
+        ub_coef = F.conv_transpose2d(ub_coef, conv_weight, None, stride, padding,
+                            output_padding, groups, dilation)
+        diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, ub_bias=ub_bias, ub_coef=ub_coef)
+        return diff_struct
+
+    def analyze_relu(self, diff_struct, layer_idx):
+        lb_layer, ub_layer = self.lbs[layer_idx-1], self.ubs[layer_idx-1]
+        active = (lb_layer >= 0)
+        passive = (ub_layer <= 0)
+        unsettled = ~(active) & ~(passive)
+
+        lambda_lb = torch.zeros(lb_layer.size(), device=self.device)
+        lambda_ub = torch.zeros(lb_layer.size(), device=self.device)
+        mu_ub = torch.zeros(lb_layer.size(), device=self.device) 
+
+        # input is active
+        lambda_lb = torch.where(active, torch.ones(lb_layer.size(), device=self.device), lambda_lb)
+        lambda_ub = torch.where(active, torch.ones(lb_layer.size(), device=self.device), lambda_ub)
+        # input is unsettled
+        temp = torch.where(ub_layer < -lb_layer, torch.zeros(lb_layer.size(), device=self.device), torch.ones(lb_layer.size(), device=self.device))
+        lambda_lb = torch.where(unsettled, temp, lambda_lb)
+        lambda_ub = torch.where(unsettled, ub_layer/(ub_layer - lb_layer + 1e-15), lambda_ub)
+        mu_ub = torch.where(unsettled, -(ub_layer * lb_layer) / (ub_layer - lb_layer + 1e-15), mu_ub)        
+
+        neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(diff_struct.lb_coef)
+        neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(diff_struct.ub_coef)
+        
+        lb_coef = neg_comp_lb * lambda_ub + pos_comp_lb * lambda_lb
+        ub_coef = neg_comp_ub * lambda_lb + pos_comp_ub * lambda_ub
+        lb_bias = diff_struct.lb_bias + neg_comp_lb @ mu_ub 
+        ub_bias = diff_struct.ub_bias + pos_comp_ub @ mu_ub
+        diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, ub_bias=ub_bias, ub_coef=ub_coef)
+        return diff_struct
 
     def get_layer_size(self, layer_index):
         layer = self.layers[layer_index]
-        if layer.type not in [LayerType.Linear, LayerType.Conv2D]:
-            raise ValueError("Should only be called for linear or conv layers")
-        if layer.type is LayerType.Linear:
-            return self.shapes[layer_index + 1]
-        if layer.type is LayerType.Conv2D:
-            shape = self.shapes[layer_index+ 1]
-            return (shape[0] * shape[1] * shape[2])        
+        shapes = self.shapes[layer_index + 1]
+        if isinstance(shapes, int):
+            return shapes
+        else:
+            return (shapes[0] * shapes[1] * shapes[2]) 
+                    
 
     # Tracks the shape after the transform corresponding to the layer
     # is applied.
@@ -77,7 +146,7 @@ class DeepPolyTransformerOptimized:
             if len(self.shapes) == 1:
                 in_shape = self.shapes.pop()
                 self.shapes.append(in_shape[0] * in_shape[1] * in_shape[2])
-                self.shapes.append(layer.weight.shape[0])
+            self.shapes.append(layer.weight.shape[0])
         elif layer.type is LayerType.Conv2D:
             weight = layer.weight
             num_kernel = weight.shape[0]
@@ -87,9 +156,7 @@ class DeepPolyTransformerOptimized:
             p_h, p_w = layer.padding
 
             shape = self.shapes[-1]
-
             input_h, input_w = shape[1:]
-
             ### ref. https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html#torch.nn.Conv2d ###
             output_h = int((input_h + 2 * p_h - k_h) / s_h + 1)
             output_w = int((input_w + 2 * p_w - k_w) / s_w + 1)
@@ -99,18 +166,30 @@ class DeepPolyTransformerOptimized:
                 raise ValueError("Relu layer should not come at first")
             self.shapes.append(self.shapes[-1])
     
+    def print_shapes(self, diff_struct):
+        print(f'lb coef shape {diff_struct.lb_coef.shape}')
+        print(f'lb bias shpae {diff_struct.lb_bias.shape}')
+        print(f'ub coef shape {diff_struct.ub_coef.shape}')
+        print(f'ub bias shpae {diff_struct.ub_bias.shape}')
 
     def back_propagation(self):
         layers_length = len(self.layers)
         diff_struct = None
         lb = None
         ub = None
+        # print(f"Layers {self.layers}")
+        print(f'\n\nlayers length {layers_length} shapes length {len(self.shapes)}')
         for i in reversed(range(layers_length)):
             layer = self.layers[i]
             # concretize the bounds.
             linear_types = [LayerType.Linear, LayerType.Conv2D]
+            
             if diff_struct is not None and layer.type in linear_types:
-                curr_lb, curr_ub = self.concrete_substitution()
+                curr_lb, curr_ub = self.concrete_substitution(diff_struct=diff_struct, 
+                                                              lb_layer=self.lbs[i], ub_layer=self.ubs[i])
+                lb = curr_lb if lb is None else torch.max(lb, curr_lb)
+                ub = curr_ub if ub is None else torch.min(ub, curr_ub)
+            
             if diff_struct is None:
                 layer_size = self.get_layer_size(layer_index=i)
                 lb_coef = torch.eye(n=layer_size, device=self.device)
@@ -119,17 +198,78 @@ class DeepPolyTransformerOptimized:
                 ub_bias = torch.zeros(layer_size, device=self.device)
                 diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef,
                                              ub_bias=ub_bias, ub_coef=ub_coef)
+            
+            if layer.type is LayerType.Linear:
+                diff_struct = self.analyze_linear(diff_struct=diff_struct, layer=layer)
+            elif layer.type is LayerType.Conv2D:
+                diff_struct = self.analyze_conv(diff_struct=diff_struct, layer=layer)
+            elif layer.type is LayerType.ReLU:
+                diff_struct = self.analyze_relu(diff_struct=diff_struct, layer_idx=i)
+            else:
+                raise ValueError(f'Unsupported Layer {layer.type}')
+            self.print_shapes(diff_struct=diff_struct)
 
+        curr_lb, curr_ub = self.concrete_substitution(diff_struct=diff_struct, 
+                                                    lb_layer=self.ilb, ub_layer=self.iub)
+        lb = curr_lb if lb is None else torch.max(lb, curr_lb)
+        ub = curr_ub if ub is None else torch.min(ub, curr_ub)
+        self.lbs.append(lb)
+        self.ubs.append(ub)
+        return diff_struct
+    
     def handle_linear(self, layer, last_layer=False):
-        # consider two cases.
-        if last_layer is True:
-            pass
         self.layers.append(layer)
+        self.update_shape(layer=layer)
+        return self.back_propagation()
 
 
     def handle_conv2d(self, layer):
-        pass
+        self.layers.append(layer)
+        self.update_shape(layer=layer)
+        return self.back_propagation()
 
     def handle_relu(self, layer):
         self.layers.append(layer)
-        return
+        self.update_shape(layer=layer)
+        return self.back_propagation()
+
+    def handle_tanh(self, layer):
+        pass
+
+    def handle_sigmoid(self, layer):
+        pass
+
+    
+    def remove_non_affine_bounds(self):
+        new_lbs = []
+        new_ubs = []
+        for i, layer in self.layers:
+            if layer.type in [LayerType.Conv2D, LayerType.Linear]:
+                new_lbs.append(self.lbs[i])
+                new_ubs.append(self.ubs[i])
+        self.lbs = new_lbs
+        self.ubs = new_ubs
+                
+
+    def populate_baseline_verifier_result(self, args=None):
+        weight = self.prop.output_constr_mat().T
+        bias = self.prop.output_constr_const()
+        if isinstance(bias, int):
+            bias = torch.tensor([float(bias)], device=self.device)
+        print("Here")
+        layer = Layer(weight=weight, bias=bias, type=LayerType.Linear)
+        diff_struct = self.handle_linear(layer=layer)
+        if args is not None and args.all_layer_sub is False: 
+            self.remove_non_affine_bounds()
+        final_lb = self.lbs.pop()
+        final_ub = self.ubs.pop()
+
+        self.lbs.append(self.ilb)
+        self.ubs.append(self.iub)
+        return BaselineVerifierRes(input=self.prop.input, layer_lbs=self.lbs, layer_ubs=self.ubs, final_lb=final_lb, 
+                                   final_ub = final_ub, lb_bias=diff_struct.lb_bias, lb_coef=diff_struct.lb_coef, eps=self.eps)
+
+# 1. Implement DeepPoly - with tanh and sigmoid.
+# 2. Implement conv layer supressions.
+# 3. Get good results on CIFAR-10 with diffpoly. 
+# 4. Rotation - X

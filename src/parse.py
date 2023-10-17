@@ -25,9 +25,10 @@ def get_transformer(transformer, net, prop, relu_mask=None):
 def forward_layers(net, relu_mask, transformers):
     for layer in net:
         if layer.type == LayerType.ReLU:
-            transformers.handle_relu(layer, optimize=True, relu_mask=relu_mask)
+            transformers.handle_relu(layer)
         elif layer.type == LayerType.Linear:
             if layer == net[-1]:
+                print(type(layer))
                 transformers.handle_linear(layer, last_layer=True)
             else:
                 transformers.handle_linear(layer)
@@ -79,6 +80,8 @@ def parse_onnx_layers(net):
         elif operation == 'Relu':
             final_relu = True
             layers.append(Layer(type=LayerType.ReLU))
+        
+        # Handle operation Sigmoid and TanH.
     
     # The final most layer is relu and no linear layer after that
     # remove the linear layer (Hack find better solutions).

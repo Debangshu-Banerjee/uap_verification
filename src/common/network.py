@@ -24,3 +24,5 @@ class LayerType(Enum):
     MaxPool1D = 5
     Normalization = 6
     NoOp = 7
+    Sigmoid = 8
+    TanH = 9

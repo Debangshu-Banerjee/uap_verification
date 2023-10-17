@@ -95,7 +95,8 @@ class ZonoTransformer:
         # print(f'final coefs sum: {torch.sum(torch.abs(self.cofs[-1]), dim=0)}')
         coef, center = self.final_coef_center()
         return BaselineVerifierRes(input=self.prop.input, layer_lbs=layer_lbs, layer_ubs=layer_ubs, final_lb=final_lb, final_ub = final_ub,
-                                   zono_center=center, zono_coef=coef, target_ubs=target_ubs, target_centers = self.targeted_centers, target_coefs = self.targeted_coef, noise_ind = self.noise_ind, eps = self.eps)
+                                   zono_center=center, zono_coef=coef, target_ubs=target_ubs, target_centers = self.targeted_centers, 
+                                   target_coefs = self.targeted_coef, noise_ind = self.noise_ind, eps = self.eps)
 
 
     def get_noise_indices(self):

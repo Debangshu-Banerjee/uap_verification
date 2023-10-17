@@ -24,6 +24,7 @@ from src.domains.deeppoly import DeeppolyTransformer
 from src.domains.deepz import ZonoTransformer
 from src.domains.lptransformer import LPTransformer
 from src.domains.deepz_uap import ZonoUAPTransformer
+from src.domains.deeppolyOptimized import DeepPolyTransformerOptimized
 from src.networks import FullyConnected, Conv
 from src.common.network import LayerType, Layer
 
@@ -318,7 +319,7 @@ def is_lirpa_domain(domain):
 
 def get_domain_builder(domain):
     if domain == Domain.DEEPPOLY:
-        return DeeppolyTransformer
+        return DeepPolyTransformerOptimized
     if domain == Domain.DEEPZ:
         return ZonoTransformer
     if domain == Domain.BOX:
