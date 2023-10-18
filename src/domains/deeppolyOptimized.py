@@ -134,6 +134,28 @@ class DeepPolyTransformerOptimized:
         ub_bias = diff_struct.ub_bias + pos_comp_ub @ mu_ub
         diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, ub_bias=ub_bias, ub_coef=ub_coef)
         return diff_struct
+    
+    def analyze_sigmoid(self, diff_struct, layer_idx):
+        lb_layer, ub_layer = self.lbs[layer_idx-1], self.ubs[layer_idx-1]
+        sigmoid_lb, sigmoid_ub = torch.sigmoid(lb_layer), torch.sigmoid(ub_layer)
+        lmbda = torch.where(lb_layer < ub_layer, (sigmoid_ub - sigmoid_lb) / (ub_layer - lb_layer + 1e-15),  sigmoid_lb * (1 - sigmoid_lb))
+        lmbda_ = torch.min(sigmoid_ub * (1 - sigmoid_ub), sigmoid_lb * (1 - sigmoid_lb))
+        lambda_lb = torch.where(lb_layer > 0, lmbda, lmbda_)
+        mu_lb = torch.where(lb_layer > 0, sigmoid_lb - torch.mul(lmbda, lb_layer),  sigmoid_lb - torch.mul(lmbda_, lb_layer))
+        lambda_ub = torch.where(ub_layer < 0, lmbda, lmbda_)
+        mu_ub =  torch.where(ub_layer < 0, sigmoid_ub - torch.mul(lmbda, ub_layer),  sigmoid_ub - torch.mul(lmbda_, lb_layer))
+
+        neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(diff_struct.lb_coef)
+        neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(diff_struct.ub_coef)
+        
+        lb_coef = neg_comp_lb * lambda_ub + pos_comp_lb * lambda_lb
+        ub_coef = neg_comp_ub * lambda_lb + pos_comp_ub * lambda_ub
+        lb_bias = diff_struct.lb_bias + neg_comp_lb @ mu_ub + pos_comp_lb @ mu_lb
+        ub_bias = diff_struct.ub_bias + pos_comp_ub @ mu_ub + neg_comp_ub @ mu_lb
+        diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, ub_bias=ub_bias, ub_coef=ub_coef)
+
+        return diff_struct
+
 
     def get_layer_size(self, layer_index):
         layer = self.layers[layer_index]
@@ -170,7 +192,16 @@ class DeepPolyTransformerOptimized:
             if len(self.shapes) == 0:
                 raise ValueError("Relu layer should not come at first")
             self.shapes.append(self.shapes[-1])
-    
+        elif layer.type is LayerType.Sigmoid:
+            if len(self.shapes) == 0:
+                raise ValueError("Sigmoid layer should not come at first")
+            self.shapes.append(self.shapes[-1])
+        elif layer.type is LayerType.TanH:
+            if len(self.shapes) == 0:
+                raise ValueError("TanH layer should not come at first")
+            self.shapes.append(self.shapes[-1])
+
+
     def print_shapes(self, diff_struct):
         print(f'lb coef shape {diff_struct.lb_coef.shape}')
         print(f'lb bias shpae {diff_struct.lb_bias.shape}')
@@ -182,8 +213,6 @@ class DeepPolyTransformerOptimized:
         diff_struct = None
         lb = None
         ub = None
-        # print(f"Layers {self.layers}")
-        # print(f'\n\nlayers length {layers_length} shapes length {len(self.shapes)}')
         for i in reversed(range(layers_length)):
             layer = self.layers[i]
             # concretize the bounds.
@@ -210,6 +239,8 @@ class DeepPolyTransformerOptimized:
                 diff_struct = self.analyze_conv(diff_struct=diff_struct, layer=layer, layer_idx=i)
             elif layer.type is LayerType.ReLU:
                 diff_struct = self.analyze_relu(diff_struct=diff_struct, layer_idx=i)
+            elif layer.type is LayerType.Sigmoid:
+                diff_struct = self.analyze_sigmoid(diff_struct=diff_struct, layer_idx=i)
             else:
                 raise ValueError(f'Unsupported Layer {layer.type}')
             # self.print_shapes(diff_struct=diff_struct)
@@ -239,8 +270,10 @@ class DeepPolyTransformerOptimized:
         return self.back_propagation()
 
     def handle_sigmoid(self, layer):
-        raise NotImplementedError('Sigmoid is not implemented for DeepPoly')
-
+        self.layers.append(layer)
+        self.update_shape(layer=layer)
+        return self.back_propagation()
+        
     def handle_tanh(self, layer):
         raise NotImplementedError('Tanh is not implemented for DeepPoly')
 
