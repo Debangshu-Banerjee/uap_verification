@@ -13,7 +13,7 @@ from torch.nn import LogSoftmax
 from torch.nn import Sequential
 from torch import flatten
 from onnx import numpy_helper
-i
+import src.config as config
 
 from src.networks import FullyConnected, Conv
 from src.common.network import LayerType
@@ -73,7 +73,7 @@ def convert_model(parsed_net, remove_last_layer=True, all_linear=False):
 
 
 def is_linear(net_name):
-    if net_name == 'mnist-net_256x2.onnx':
+    if net_name in config.linear_models:
         return True
     else:
         return False

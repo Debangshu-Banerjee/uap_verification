@@ -18,10 +18,13 @@ class UapBasicLP:
         # crown baseline
         self.lb_coefs = None
         self.lb_biases = None
+        # Store the unperturbed inputs.
+        self.inputs = None 
         # Model
         self.model = grb.Model()
         # stores minimum of each individual property.
         self.prop_mins = []
+        self.eps = None
 
     def populate_info(self):
         for res in self.baseline_results:
@@ -49,6 +52,14 @@ class UapBasicLP:
                     self.lb_biases = [res.lb_bias]
                 else:
                     self.lb_biases.append(res.lb_bias)
+            
+            if res.input is not None:
+                if self.inputs is None:
+                    self.inputs = [res.input]
+                else:
+                    self.inputs.append(res.input)
+
+            self.eps = res.eps
 
     def formulate_zono_lb(self):
         if self.zono_coefs is None or self.zono_centers is None:
@@ -82,10 +93,8 @@ class UapBasicLP:
             self.prop_mins.append(var_min)
             self.model.update()
 
-    def run_zono_lp_baseline(self, proportion):
-        self.baseline_lbs.sort()
-        print("DeepZ lbs", self.baseline_lbs)
-        self.formulate_zono_lb()
+
+    def optimize_lp(self, proportion):
         if proportion == False:
             problem_min = self.model.addVar(lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, 
                                 name='problem_min')
@@ -98,7 +107,7 @@ class UapBasicLP:
                 print("Gurobi model status", self.model.status)
                 self.model.computeIIS()
                 self.model.write("model_baseline.ilp")
-                return None
+                return -1e6
         else:
             binary_vars = []
             for i, var_min in enumerate(self.prop_mins):
@@ -108,7 +117,6 @@ class UapBasicLP:
 
                 # Force binary_vars[-1] to be '1' when t_min > 0
                 self.model.addConstr(BIG_M * binary_vars[-1] >= var_min)
-
 
                 # Force binary_vars[-1] to be '0' when t_min < 0 or -t_min  > 0
                 self.model.addConstr(BIG_M * (binary_vars[-1] - 1) <= var_min)
@@ -124,11 +132,61 @@ class UapBasicLP:
                 print("Gurobi model status", self.model.status)
                 self.model.computeIIS()
                 self.model.write("model_basic.ilp")
-                return None
+                return 0.0
+
+    def run_zono_lp_baseline(self, proportion):
+        self.baseline_lbs.sort()
+        print("DeepZ lbs", self.baseline_lbs)
+        self.formulate_zono_lb()
+        return self.optimize_lp(proportion=proportion)
+
+    def pos_neg_weight_decomposition(self, coef):
+        neg_comp = torch.where(coef < 0, coef, torch.zeros_like(coef, device='cpu'))
+        pos_comp = torch.where(coef >= 0, coef, torch.zeros_like(coef, device='cpu'))
+        return neg_comp, pos_comp
+    
+    def debug_lb_coef(self):
+        for i, lb_coef in enumerate(self.lb_coefs):
+            input_t = self.inputs[i]
+            lb_bias = self.lb_biases[i]
+            lb_layer = input_t - self.eps
+            ub_layer = input_t + self.eps
+            neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(lb_coef)
+            lb = neg_comp_lb @ ub_layer + pos_comp_lb @ lb_layer + lb_bias
+            print(f'lower bound {torch.min(lb)}')  
 
 
+    
+    def formulate_crown_lp(self):
+        if self.lb_coefs is None or self.lb_biases is None or self.eps is None:
+            raise ValueError("lb_coefs or lb_bias or eps is NULL.")
+        assert len(self.lb_coefs) == len(self.lb_biases)
+        self.model.setParam('OutputFlag', False)
+        # self.debug_lb_coef()
+        vs = [self.model.addMVar(self.input_size, lb = self.inputs[i].detach().numpy() - self.eps.item(),
+                                  ub = self.inputs[i].detach().numpy() + self.eps.item(), vtype=grb.GRB.CONTINUOUS,
+                                name=f'input_{i}') for i in range(len(self.inputs))]
+        delta = self.model.addMVar(self.input_size, lb =-self.eps.item(), ub = self.eps.item(), vtype=grb.GRB.CONTINUOUS, name='uap_delta')
+        for i, lb_coef in enumerate(self.lb_coefs):
+            lb_bias = self.lb_biases[i]
+            self.model.addConstr(vs[i] == self.inputs[i].detach().numpy() + delta)
+            t = self.model.addMVar(lb_bias.shape[0], lb=float('-inf'), ub=float('inf'), name=f'individual_lbs_{i}')
+            lb_bias = lb_bias.detach().numpy()
+            lb_coef = lb_coef.detach().numpy()
+            self.model.addConstr(t == lb_coef @ vs[i] + lb_bias)
+            var_min = self.model.addVar(lb=-float('inf'), ub=float('inf'), 
+                                                vtype=grb.GRB.CONTINUOUS, 
+                                                name=f'var_min_{i}')
+            self.model.addGenConstrMin(var_min, t.tolist())
+            self.prop_mins.append(var_min)
+            self.model.update()            
+
+            
     def run_crown_lp_baseline(self, proportion):
-        pass                  
+        self.baseline_lbs.sort()
+        print("DeepPoly/CROWN lbs", self.baseline_lbs)
+        self.formulate_crown_lp()    
+        return self.optimize_lp(proportion=proportion)    
 
     def run(self, proportion=False, targeted = False, monotone = False, monotonic_inv = False, diff=None) -> UAPSingleRes:
         self.populate_info()
@@ -161,4 +219,21 @@ class UapBasicLP:
                     status=verified_status, global_lb=global_lb, time_taken=None, 
                     verified_proportion=verified_proportion)
         elif self.lb_coefs is not None:
-            return self.run_crown_lp_baseline(proportion=proportion)
+            ans = self.run_crown_lp_baseline(proportion=proportion)
+            global_lb = None
+            verified_proportion = None
+            verified_status = Status.UNKNOWN
+            if proportion == False:
+                print("Baseline global lp ", ans)
+                global_lb = ans
+                if global_lb >= 0:
+                    verified_status = Status.VERIFIED
+            else:
+                print("Baseline proportion ", ans)
+                verified_proportion = ans
+                if verified_proportion >= self.args.cutoff_percentage:
+                    verified_status = Status.VERIFIED
+
+            return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
+                status=verified_status, global_lb=global_lb, time_taken=None, 
+                verified_proportion=verified_proportion)

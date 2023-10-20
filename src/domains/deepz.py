@@ -19,7 +19,7 @@ class ZonoTransformer:
         self.prop = prop
         self.ilb = prop.input_lb
         self.iub = prop.input_ub
-        self.eps = torch.sum(self.iub - self.ilb)
+        self.eps = torch.max(self.iub - self.ilb) / 2.0
         self.complete = complete
         # A map that keeps tracks of the scaling factor of the perturbation
         # bound for each index. Currently the perturbation bound is only defined

@@ -71,7 +71,8 @@ def UapVerification(uap_verification_args: UapAnalysisArgs):
                                     monotone_prop = uap_verification_args.monotone_prop, 
                                     monotone_inv = uap_verification_args.monotone_inv, 
                                     try_input_smoothing=uap_verification_args.try_image_smoothing,
-                                    count_per_prop=uap_verification_args.count_per_prop)
+                                    count_per_prop=uap_verification_args.count_per_prop, 
+                                    net_name=uap_verification_args.net)
     if uap_verification_args.uap_mode is UAPMode.RADIUS:
         UapVerifiedRadiusBackend(props=props, uap_verification_args=uap_verification_args)
     elif uap_verification_args.uap_mode is UAPMode.VERIFICATION:

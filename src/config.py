@@ -112,6 +112,9 @@ HOUSING_2LAYER = 'monotonic_2layer.onnx'
 HOUSING_2LAYER_100 = 'monotonic_2layer_100.onnx'
 HOUSING_2LAYER_200 = 'monotonic_2layer_200.onnx'
 
+
+linear_models = [MNIST_FFN_L2, MNIST_LINEAR_50, MNIST_LINEAR_100, MNIST_FFN_L4, MNIST_BINARY]
+
 class MONOTONE_PROP(IntEnum):
     CRIM = 0
     ZN = 1

@@ -35,7 +35,7 @@ class DeepPolyTransformerOptimized:
         self.ilb = prop.input_lb
         self.iub = prop.input_ub
         self.input_shape = None
-        self.eps = torch.sum(self.iub - self.ilb)
+        self.eps = torch.max(self.iub - self.ilb) / 2.0
         # Tracking shpes for supporting conv layers.
         self.shapes = []
         if self.size == 784:
@@ -305,6 +305,9 @@ class DeepPolyTransformerOptimized:
 
         self.lbs.append(self.ilb)
         self.ubs.append(self.iub)
+
+        lb_debug, _ = self.concrete_substitution(diff_struct=diff_struct, lb_layer=self.ilb, ub_layer=self.iub)
+
         return BaselineVerifierRes(input=self.prop.input, layer_lbs=self.lbs, layer_ubs=self.ubs, final_lb=final_lb, 
                                    final_ub = final_ub, lb_bias=diff_struct.lb_bias, lb_coef=diff_struct.lb_coef, eps=self.eps)
 

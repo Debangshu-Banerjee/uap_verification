@@ -14,12 +14,40 @@ class TestBasicUap(TestCase):
         uap_verfication_args = uap_ver.UapAnalysisArgs(
             individual_prop_domain=Domain.DEEPPOLY,
             domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.MNIST, sink_label=None,
-            spec_type=InputSpecType.UAP, count=2, count_per_prop=5, eps=0.16, net=config.MNIST_CONV_SIGMOID,                                                                                                              
+            spec_type=InputSpecType.UAP, count=1, count_per_prop=5, eps=0.13, net=config.MNIST_CONV_SMALL_DIFFAI,                                                                                                              
             timeout=100, output_dir='results_trial/', radius_l=0.002, radius_r=0.25,
-            uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+            uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=False,
             no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=3,
             try_image_smoothing=False, filter_threshold=None)
         uap_ver.UapVerification(uap_verfication_args)
+
+    def test_mnist_uap_full(self):
+        eps = 0.13
+        for _ in range(10):
+            uap_verfication_args = uap_ver.UapAnalysisArgs(
+                individual_prop_domain=Domain.DEEPPOLY,
+                domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.MNIST, sink_label=None,
+                spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=eps, net=config.MNIST_CONV_SMALL_DIFFAI,                                                                                                              
+                timeout=100, output_dir='results_trial/', radius_l=0.002, radius_r=0.25,
+                uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+                no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=3,
+                try_image_smoothing=False, filter_threshold=None)
+            eps += 0.005
+            uap_ver.UapVerification(uap_verfication_args)
+        
+        # eps = 0.13
+        # for _ in range(14):
+        #     uap_verfication_args = uap_ver.UapAnalysisArgs(
+        #         individual_prop_domain=Domain.DEEPPOLY,
+        #         domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.MNIST, sink_label=None,
+        #         spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=eps, net=config.MNIST_CROWN_IBP,                                                                                                              
+        #         timeout=100, output_dir='results_trial/', radius_l=0.002, radius_r=0.25,
+        #         uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+        #         no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=3,
+        #         try_image_smoothing=False, filter_threshold=None)
+        #     eps += 0.005
+        #     uap_ver.UapVerification(uap_verfication_args)
+
 
     def test_mnist_uap_debug(self):
         uap_verfication_args = uap_ver.UapAnalysisArgs(
@@ -35,12 +63,40 @@ class TestBasicUap(TestCase):
         uap_verfication_args = uap_ver.UapAnalysisArgs(
             individual_prop_domain=Domain.DEEPZ,
             domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.CIFAR10, sink_label=None,
-            spec_type=InputSpecType.UAP, count=2, count_per_prop=5, eps=3.6/255, net=config.CIFAR_CONV_SMALL_DIFFAI,                                                                                                              
+            spec_type=InputSpecType.UAP, count=1, count_per_prop=5, eps=4.5/255, net=config.CIFAR_CONV_DIFFAI,                                                                                                              
             timeout=100, output_dir='results/', radius_l=0.002, radius_r=0.25, 
             uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=False,
             no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=3,
             try_image_smoothing=False, filter_threshold=None)
         uap_ver.UapVerification(uap_verfication_args)
+
+    def test_cifar_uap_full(self):
+
+        eps = 2.0
+        for _ in range(10):
+            uap_verfication_args = uap_ver.UapAnalysisArgs(
+                individual_prop_domain=Domain.DEEPZ,
+                domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.CIFAR10, sink_label=None,
+                spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=eps/255, net=config.CIFAR_CROWN_IBP,                                                                                                              
+                timeout=100, output_dir='results/', radius_l=0.002, radius_r=0.25, 
+                uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+                no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=3,
+                try_image_smoothing=False, filter_threshold=None)
+            uap_ver.UapVerification(uap_verfication_args)
+            eps += 0.35
+
+        eps = 2.0
+        for _ in range(10):
+            uap_verfication_args = uap_ver.UapAnalysisArgs(
+                individual_prop_domain=Domain.DEEPZ,
+                domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.CIFAR10, sink_label=None,
+                spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=eps/255, net=config.CIFAR_CONV_DIFFAI,                                                                                                              
+                timeout=100, output_dir='results/', radius_l=0.002, radius_r=0.25, 
+                uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+                no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=3,
+                try_image_smoothing=False, filter_threshold=None)
+            uap_ver.UapVerification(uap_verfication_args)
+            eps += 0.35
 
 class TestTargetedUap(TestCase):   
     def test_mnist_uap(self):

@@ -135,7 +135,7 @@ class UAPLPtransformer:
                 self.gmdl.computeIIS()
                 self.gmdl.write("model.ilp") 
                 self.debug_log_file.close()   
-                return NotImplementedError
+                return -1e6
         
 
     def optimize_monotone(self, monotone):
@@ -292,7 +292,7 @@ class UAPLPtransformer:
             print("Computing computeIIS finished")            
             self.gmdl.write("model.ilp")
             self.debug_log_file.close()
-            return NotImplementedError
+            return 0.0
 
     def create_input_constraints(self):
         # the uap perturbation.

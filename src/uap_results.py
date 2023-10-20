@@ -57,8 +57,12 @@ class UAPResultList:
         baseline_verified_count = 0
         uap_verified_without_diff = 0
         uap_verified_count = 0
-        times = [0, 0, 0, 0]        
-        filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}.dat'
+        times = [0, 0, 0, 0]
+        layerwise_constraint_time = 0
+        layerwise_optimization_time = 0
+        diff_constraint_time = 0
+        diff_optimization_time = 0
+        filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}_{args.individual_prop_domain}.dat'
         file = open(filename, 'a+')
         for i, res in enumerate(self.result_list):
             individual_res = res.individual_res
@@ -78,14 +82,30 @@ class UAPResultList:
                 uap_verified_without_diff += uap_no_diff_res.verified_proportion * args.count_per_prop
                 if times[2] is not None and uap_no_diff_res.timings is not None:
                     times[2] += uap_no_diff_res.timings.total_time
+                    if uap_no_diff_res.timings.constraint_formulation_time is not None:
+                        layerwise_constraint_time += uap_no_diff_res.timings.constraint_formulation_time
+                    if uap_no_diff_res.timings.optimization_time is not None:
+                        layerwise_optimization_time += uap_no_diff_res.timings.optimization_time
             if UAP_res is not None and UAP_res.verified_proportion is not None:
                 uap_verified_count += UAP_res.verified_proportion * args.count_per_prop
                 if times[3] is not None and UAP_res.timings is not None:
-                    times[3] += UAP_res.timings.total_time    
-        for t in times:
-            if t is not None and count > 0:
-                t /= count
-
+                    times[3] += UAP_res.timings.total_time
+                    if UAP_res.timings.constraint_formulation_time is not None:
+                        diff_constraint_time += UAP_res.timings.constraint_formulation_time
+                    if UAP_res.timings.optimization_time is not None:
+                        diff_optimization_time += UAP_res.timings.optimization_time
+        print(f'count {count}')
+        for i, _  in enumerate(times):
+            print(f'time {times[i]}')
+            if times[i] is not None and count > 0:
+                times[i] /= count
+            print(f'time {times[i]}')
+        if count > 0:
+            layerwise_constraint_time /= count
+            layerwise_optimization_time /= count
+            diff_constraint_time /= count
+            diff_optimization_time /= count
+    
         file.write(f'\n\n\nEps : {args.eps}\n')
         file.write(f'Individual verified: {individual_verified_count}\n')
         file.write(f'Baseline verified: {baseline_verified_count}\n')
@@ -98,12 +118,12 @@ class UAPResultList:
         # Write the formulation and optimization times.
         file.write('\n\n\n')
         if uap_no_diff_res is not None and uap_no_diff_res.timings is not None:
-            file.write(f'No diff constraint time {uap_no_diff_res.timings.constraint_formulation_time}\n')
-            file.write(f'No diff optimization time {uap_no_diff_res.timings.optimization_time}\n')
+            file.write(f'No diff constraint time {layerwise_constraint_time}\n')
+            file.write(f'No diff optimization time {layerwise_optimization_time}\n')
 
         if UAP_res is not None and UAP_res.timings is not None:
-            file.write(f'With diff constraint time {UAP_res.timings.constraint_formulation_time}\n')
-            file.write(f'With diff optimization time {UAP_res.timings.optimization_time}\n')
+            file.write(f'With diff constraint time {diff_constraint_time}\n')
+            file.write(f'With diff optimization time {diff_optimization_time}\n')
 
         file.close()
 

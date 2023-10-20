@@ -98,6 +98,8 @@ class UAPAnalyzerBackendWrapper:
             uap_algorithm_res = self.run_uap_verification(domain=self.args.domain, 
                                                     individual_verification_results=individual_verification_results, 
                                                     diff=True)
+            uap_algorithm_res.verified_proportion = max(uap_algorithm_no_diff_res.verified_proportion, 
+                                                        uap_algorithm_res.verified_proportion) 
             uap_time = time.time() - start_time
             uap_algorithm_res.timings = LP_TIMINGS(total_time=(individual_time + uap_time), 
                                 constraint_formulation_time=uap_algorithm_res.constraint_time,

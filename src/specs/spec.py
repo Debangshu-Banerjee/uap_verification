@@ -5,11 +5,13 @@ from src.specs.properties.acasxu import get_acas_spec
 from src.specs.property import Property, InputSpecType, OutSpecType
 from src.specs.out_spec import Constraint
 from src.specs.relu_spec import Reluspec
-from src.util import prepare_data
+from src.util import prepare_data, get_net
 from src.common import Status
 from src.common.dataset import Dataset
+from src.network_conversion_helper import convert_model
 import pandas as pd
 import numpy as np
+from torchvision.transforms import Normalize as norm
 
 '''
 Specification holds upper bound and lower bound on ranges for each dimension.
@@ -258,9 +260,31 @@ def process_input_for_binary(inputs, labels, target_count=0):
     new_labels = torch.stack(new_labels)
     return new_inputs, new_labels
 
+def remove_unclassified_images(inputs, labels, dataset, net_name):
+    if net_name == '':
+        return inputs, labels
+
+    model = get_net(net_name, dataset)
+    try:
+        with torch.no_grad():
+            converted_model = convert_model(model, remove_last_layer=False, all_linear=False)
+            mean, std = get_mean_std(dataset=dataset, net_name=net_name)
+            norm_transform = norm(mean, std) 
+            inputs_normalised = norm_transform(inputs)
+            outputs = converted_model(inputs_normalised)
+            output_labels = torch.max(outputs, axis=1)[1]
+            print(f'matching tensor {output_labels == labels}')
+            inputs = inputs[output_labels == labels]
+            labels = labels[output_labels == labels]
+            return inputs, labels
+    except:
+        print('\n Warning: can not convert to pytorch model')
+        return inputs, labels
+
 def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None, 
               sink_label=None, debug_mode=False, monotone_prop = None, 
-              monotone_inv = False, try_input_smoothing=False, count_per_prop=None):
+              monotone_inv = False, try_input_smoothing=False, count_per_prop=None,
+              net_name=''):
     if debug_mode == True:
         return generate_debug_specs(count=count, eps=eps)
     if dataset == Dataset.MNIST or dataset == Dataset.CIFAR10:
@@ -286,18 +310,20 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None,
         elif spec_type == InputSpecType.UAP:
             if try_input_smoothing is True:
                 count //= count_per_prop
-            testloader = prepare_data(dataset, batch_size=count)
+            testloader = prepare_data(dataset, batch_size=5*count)
             inputs, labels = next(iter(testloader))
+            inputs, labels = remove_unclassified_images(inputs, labels, dataset, net_name)
+            inputs, labels = inputs[:count], labels[:count]
             if try_input_smoothing is True:
                 torch.manual_seed(1000)
                 inputs = inputs.repeat_interleave(count_per_prop, dim=0)
                 inputs += torch.rand(inputs.size()) * (eps / 20.0) 
                 labels = labels.repeat_interleave(count_per_prop, dim=0)
-            props = get_linf_spec(inputs, labels, eps, dataset)
+            props = get_linf_spec(inputs, labels, eps, dataset, net_name=net_name)
         elif spec_type == InputSpecType.UAP_TARGETED:
             if try_input_smoothing is True:
                 count //= count_per_prop
-            testloader = prepare_data(dataset, batch_size=2*count)
+            testloader = prepare_data(dataset, batch_size=6*count)
             inputs, labels = next(iter(testloader))
             if try_input_smoothing is True:
                 torch.manual_seed(1000)
@@ -306,12 +332,14 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None,
                 labels = labels.repeat_interleave(count_per_prop, dim=0)
             inputs, labels = process_input_for_sink_label(inputs=inputs, labels=labels, 
                                                           sink_label=sink_label, target_count=count)
-            props = get_targeted_UAP_spec(inputs, eps, dataset, sink_label=torch.tensor(sink_label))
+            inputs, labels = remove_unclassified_images(inputs, labels, dataset, net_name)
+            inputs, labels = inputs[:count], labels[:count]
+            props = get_targeted_UAP_spec(inputs, eps, dataset, sink_label=torch.tensor(sink_label), net_name=net_name)
         elif spec_type == InputSpecType.UAP_BINARY:
             testloader = prepare_data(dataset, batch_size=12*count)
             inputs, labels = next(iter(testloader))
             inputs, labels = process_input_for_binary(inputs=inputs, labels=labels, target_count=count)
-            props = get_binary_uap_spec(inputs=inputs, labels=labels, eps=eps, dataset=dataset)   
+            props = get_binary_uap_spec(inputs=inputs, labels=labels, eps=eps, dataset=dataset, net_name=net_name)   
         return props, inputs
     elif dataset == Dataset.HOUSING:
         test_dataset = pd.read_csv('monotonic-neural-networks/data/boston_house_pricing/testing_data.csv', index_col=0)
@@ -425,7 +453,7 @@ def get_linf_spec_test(inputs, labels, eps, dataset):
 
 # Get the specification for local linf robusteness.
 # Untargeted uap are exactly same for local linf specs.
-def get_linf_spec(inputs, labels, eps, dataset):
+def get_linf_spec(inputs, labels, eps, dataset, net_name=''):
     properties = []
 
     for i in range(len(inputs)):
@@ -434,7 +462,7 @@ def get_linf_spec(inputs, labels, eps, dataset):
         ilb = image - eps
         iub = image + eps
 
-        mean, std = get_mean_std(dataset)
+        mean, std = get_mean_std(dataset, net_name=net_name)
         ilb = (ilb - mean) / std
         iub = (iub - mean) / std
         
@@ -447,7 +475,7 @@ def get_linf_spec(inputs, labels, eps, dataset):
 
     return properties
 
-def get_binary_uap_spec(inputs, labels, eps, dataset):
+def get_binary_uap_spec(inputs, labels, eps, dataset, net_name=''):
     properties = []
 
     for i in range(len(inputs)):
@@ -456,7 +484,7 @@ def get_binary_uap_spec(inputs, labels, eps, dataset):
         ilb = image - eps
         iub = image + eps
 
-        mean, std = get_mean_std(dataset)
+        mean, std = get_mean_std(dataset, net_name=net_name)
 
         ilb = (ilb - mean) / std
         iub = (iub - mean) / std
@@ -471,7 +499,7 @@ def get_binary_uap_spec(inputs, labels, eps, dataset):
     return properties
 
 
-def get_targeted_UAP_spec(inputs, eps, dataset, sink_label):
+def get_targeted_UAP_spec(inputs, eps, dataset, sink_label, net_name=''):
     properties = []
 
     for i in range(len(inputs)):
@@ -480,7 +508,7 @@ def get_targeted_UAP_spec(inputs, eps, dataset, sink_label):
         ilb = image - eps
         iub = image + eps
 
-        mean, std = get_mean_std(dataset)
+        mean, std = get_mean_std(dataset, net_name=net_name)
 
         ilb = (ilb - mean) / std
         iub = (iub - mean) / std
@@ -557,12 +585,16 @@ def get_patch_specs(inputs, labels, eps, dataset, p_width=2, p_length=2):
     return props
 
 
-def get_mean_std(dataset):
+
+
+def get_mean_std(dataset, net_name=''):
     if dataset == Dataset.MNIST:
-        # means = [0]
-        # stds = [1]
-        means = [0.1307]
-        stds = [0.3081]
+        if 'crown' in net_name:
+            means = [0.0]
+            stds = [1.0]
+        else:
+            means = [0.1307]
+            stds = [0.3081]
     elif dataset == Dataset.CIFAR10:
         # For the model that is loaded from cert def this normalization was
         # used
