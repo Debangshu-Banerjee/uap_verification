@@ -1,0 +1,54 @@
+
+
+
+Eps : 0.16
+Individual verified: 0
+Baseline verified: 0.0
+Uap no diff verified 0.0
+Uap verified: 1.0
+Extra verified: 1.0
+Extra diff verified 1.0
+Avg. times [0.5892758369445801, 0.8040084838867188, 8.84515643119812, 99.59181642532349]
+
+
+
+No diff constraint time 1.5561497211456299
+No diff optimization time 1.2523577213287354
+With diff constraint time 2.2294700145721436
+With diff optimization time 1.1896214485168457
+
+
+
+Eps : 0.16
+Individual verified: 0
+Baseline verified: 0.0
+Uap no diff verified 0.0
+Uap verified: 1.0
+Extra verified: 1.0
+Extra diff verified 1.0
+Avg. times [0.3194088935852051, 0.43568503856658936, 5.110984563827515, 52.067312240600586]
+
+
+
+No diff constraint time 2.025749683380127
+No diff optimization time 1.6979353427886963
+With diff constraint time 3.0981438159942627
+With diff optimization time 1.6758646965026855
+
+
+
+Eps : 0.16
+Individual verified: 0
+Baseline verified: 0.0
+Uap no diff verified 0.0
+Uap verified: 1.0
+Extra verified: 1.0
+Extra diff verified 1.0
+Avg. times [0.27358245849609375, 0.4087522029876709, 5.959242463111877, 53.437087416648865]
+
+
+
+No diff constraint time 1.698757290840149
+No diff optimization time 3.9635599851608276
+With diff constraint time 2.9280612468719482
+With diff optimization time 42.040908455848694
