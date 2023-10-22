@@ -334,6 +334,10 @@ class UAPLPtransformer:
             elif layer_type == LayerType.Sigmoid:
                 self.create_sigmoid_constraints(layer_idx=layer_idx)
                 if self.args is not None and self.args.all_layer_sub is True:
+                    self.linear_layer_idx += 1
+            elif layer_type == LayerType.TanH:
+                self.create_sigmoid_constraints(layer_idx=layer_idx)
+                if self.args is not None and self.args.all_layer_sub is True:
                     self.linear_layer_idx += 1                
             elif layer_type == LayerType.Flatten:
                 continue
@@ -437,7 +441,7 @@ class UAPLPtransformer:
                     ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][layer_idx].shape[0], lb=self.d_lbs[(i, j)][layer_idx],
                                      ub=self.d_ubs[(i, j)][layer_idx],
                                       vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
-        elif layer_type == 'sigmoid':
+        elif layer_type in ['sigmoid', 'tanh']:
             vs = [self.gmdl.addMVar(self.x_lbs[i][layer_idx].shape[0], lb = self.x_lbs[i][layer_idx],
                                      ub = self.x_ubs[i][layer_idx], vtype=grb.GRB.CONTINUOUS, 
                                      name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
@@ -644,6 +648,8 @@ class UAPLPtransformer:
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
 
 
+    def create_tanh_constraints(self, layer_idx):
+        pass
 
     def create_conv2d_constraints_helper(self, vars, pre_vars, num_kernel, output_h, 
                                          output_w, bias, weight, layer, input_h, input_w):

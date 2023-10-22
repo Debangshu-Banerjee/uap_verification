@@ -547,11 +547,11 @@ class DiffDeepPoly:
         mu_lb = torch.zeros(lb_input1_layer.size(), device=self.device)
         mu_ub = torch.zeros(lb_input1_layer.size(), device=self.device)
 
-        # case 1 lb >= 0 or ub <= 0
+        # case 1 delta_lb >= 0 or delta_ub <= 0
         lambda_lb = torch.where(~delta_unsettled, lambda_lower, lambda_lb)
         lambda_ub = torch.where(~delta_unsettled, lambda_upper, lambda_ub)
 
-        # case 2 lb < 0 and ub > 0
+        # case 2 delta_lb < 0 and delta_ub > 0
         prod_lb_ub = delta_lb_layer * delta_ub_layer
         diff_lb_ub = (delta_ub_layer - delta_lb_layer + 1e-15)
         temp_lambda_lb = (lambda_upper * delta_ub_layer - 0.25* delta_lb_layer) / diff_lb_ub
@@ -591,11 +591,99 @@ class DiffDeepPoly:
         return back_prop_struct
 
 
-    
-    def handle_tanh(self, lb_input1_layer, ub_input1_layer, 
+    def analyze_tanh(self, poly_struct, lb_layer, ub_layer):
+        tanh_lb, tanh_ub = torch.tanh(lb_layer), torch.tanh(ub_layer)
+        lmbda = torch.where(lb_layer < ub_layer, (tanh_ub - tanh_lb) / (ub_layer - lb_layer + 1e-15),  1 - tanh_lb * tanh_lb)
+        lmbda_ = torch.min(1 - tanh_ub * tanh_ub, 1 - tanh_lb * tanh_lb)
+
+        lambda_lb = torch.where(lb_layer > 0, lmbda, lmbda_)
+        mu_lb = torch.where(lb_layer > 0, tanh_lb - torch.mul(lmbda, lb_layer),  tanh_lb - torch.mul(lmbda_, lb_layer))
+        
+        lambda_ub = torch.where(ub_layer < 0, lmbda, lmbda_)
+        mu_ub =  torch.where(ub_layer < 0, tanh_ub - torch.mul(lmbda, ub_layer),  tanh_ub - torch.mul(lmbda_, lb_layer))
+
+        neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(poly_struct.lb_coef)
+        neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(poly_struct.ub_coef)
+        
+        lb_coef = neg_comp_lb * lambda_ub + pos_comp_lb * lambda_lb
+        ub_coef = neg_comp_ub * lambda_lb + pos_comp_ub * lambda_ub
+        lb_bias = poly_struct.lb_bias + neg_comp_lb @ mu_ub + pos_comp_lb @ mu_lb
+        ub_bias = poly_struct.ub_bias + pos_comp_ub @ mu_ub + neg_comp_ub @ mu_lb
+        poly_struct = BasicDeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, ub_bias=ub_bias, ub_coef=ub_coef)
+        return poly_struct
+
+
+    def handle_tanh(self, back_prop_struct, lb_input1_layer, ub_input1_layer, 
                     lb_input2_layer, ub_input2_layer,
                     delta_lb_layer, delta_ub_layer):
-        pass
+        
+        poly_struct1 = BasicDeepPolyStruct(lb_bias=back_prop_struct.lb_bias_input1, 
+                                           lb_coef=back_prop_struct.lb_coef_input1,
+                                           ub_bias=back_prop_struct.ub_bias_input1,
+                                           ub_coef=back_prop_struct.ub_coef_input1)
+        poly_struct1 = self.analyze_sigmoid(poly_struct=poly_struct1, lb_layer=lb_input1_layer, ub_layer=ub_input1_layer)
+
+        poly_struct2 = BasicDeepPolyStruct(lb_bias=back_prop_struct.lb_bias_input2, 
+                                           lb_coef=back_prop_struct.lb_coef_input2,
+                                           ub_bias=back_prop_struct.ub_bias_input2,
+                                           ub_coef=back_prop_struct.ub_coef_input2)
+        poly_struct2 = self.analyze_sigmoid(poly_struct=poly_struct2, lb_layer=lb_input2_layer, ub_layer=ub_input2_layer)
+
+        lb, ub = torch.min(lb_input1_layer, lb_input2_layer), torch.max(ub_input1_layer, ub_input2_layer)
+        tanh_lb, tanh_ub = torch.tanh(lb), torch.tanh(ub)
+        lambda_lower, lambda_upper = 1.0 - (tanh_lb * tanh_lb), 1.0 - (tanh_ub * tanh_ub)
+
+        delta_active = (delta_lb_layer >= 0)
+        delta_passive = (delta_ub_layer <= 0)
+        delta_unsettled = ~(delta_active) & ~(delta_passive)
+
+        lambda_lb = torch.zeros(lb_input1_layer.size(), device=self.device)
+        lambda_ub = torch.zeros(lb_input1_layer.size(), device=self.device)
+
+        mu_lb = torch.zeros(lb_input1_layer.size(), device=self.device)
+        mu_ub = torch.zeros(lb_input1_layer.size(), device=self.device)
+
+        # case 1 lb >= 0 or ub <= 0
+        lambda_lb = torch.where(~delta_unsettled, lambda_lower, lambda_lb)
+        lambda_ub = torch.where(~delta_unsettled, lambda_upper, lambda_ub)
+
+        # case 2 delta_lb < 0 and delta_ub > 0
+        prod_lb_ub = delta_lb_layer * delta_ub_layer
+        diff_lb_ub = (delta_ub_layer - delta_lb_layer + 1e-15)
+        temp_lambda_lb = (lambda_upper * delta_ub_layer - delta_lb_layer) / diff_lb_ub
+        temp_lambda_ub = (delta_ub_layer - lambda_lower * delta_lb_layer) / diff_lb_ub
+    
+        temp_mu_lb = (1.0 - lambda_upper) * prod_lb_ub
+        temp_mu_lb = temp_mu_lb / diff_lb_ub
+        temp_mu_ub = (lambda_lower - 1.0) * prod_lb_ub
+        temp_mu_ub = temp_mu_ub / diff_lb_ub
+
+        lambda_lb = torch.where(~delta_unsettled, temp_lambda_lb, lambda_lb)
+        lambda_ub = torch.where(~delta_unsettled, temp_lambda_ub, lambda_ub)
+        mu_lb = torch.where(~delta_unsettled, temp_mu_lb, mu_lb)
+        mu_ub = torch.where(~delta_unsettled, temp_mu_ub, mu_ub)
+
+        neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_coef)
+        neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_coef)
+
+        delta_lb_coef = neg_comp_lb * lambda_ub + pos_comp_lb * lambda_lb 
+        delta_ub_coef = neg_comp_ub * lambda_lb + pos_comp_ub * lambda_ub
+
+        delta_lb_bias = back_prop_struct.delta_lb_bias + neg_comp_lb @ mu_ub + pos_comp_lb @ mu_lb
+        delta_ub_bias = back_prop_struct.delta_ub_bias + neg_comp_ub @ mu_lb + pos_comp_ub @ mu_ub
+
+        back_prop_struct.populate(delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias, 
+                                    delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias,
+                                    delta_lb_input1_coef=None, 
+                                    delta_ub_input1_coef=None,
+                                    delta_lb_input2_coef=None,
+                                    delta_ub_input2_coef=None,
+                                    lb_coef_input1=poly_struct1.lb_coef, lb_coef_input2=poly_struct2.lb_coef,
+                                    ub_coef_input1=poly_struct1.ub_coef, ub_coef_input2=poly_struct2.ub_coef,
+                                    lb_bias_input1=poly_struct1.lb_bias, lb_bias_input2=poly_struct2.lb_bias,
+                                    ub_bias_input1=poly_struct1.ub_bias, ub_bias_input2=poly_struct2.ub_bias)
+        return back_prop_struct
+
 
 
     def get_layer_size(self, linear_layer_index):

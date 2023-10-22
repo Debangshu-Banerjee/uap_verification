@@ -37,6 +37,8 @@ def forward_layers(net, relu_mask, transformers):
             transformers.handle_normalization(layer)
         elif layer.type == LayerType.Sigmoid:
             transformers.handle_sigmoid(layer)
+        elif layer.type == LayerType.TanH:
+            transformers.handle_tanh(layer)
     return transformers
 
 

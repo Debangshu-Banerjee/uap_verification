@@ -157,6 +157,32 @@ class DeepPolyTransformerOptimized:
         diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, ub_bias=ub_bias, ub_coef=ub_coef)
 
         return diff_struct
+    
+    def analyze_tanh(self, diff_struct, layer_idx):
+        lb_layer, ub_layer = self.lbs[layer_idx-1], self.ubs[layer_idx-1]
+
+        # lmb = (su - sl) / (u - l) if l < u else 1 - sl * sl
+        # lmb_ = torch.min(1 - su * su, 1 - sl * sl)
+        tanh_lb, tanh_ub = torch.tanh(lb_layer), torch.tanh(ub_layer)
+        lmbda = torch.where(lb_layer < ub_layer, (tanh_ub - tanh_lb) / (ub_layer - lb_layer + 1e-15),  1 - tanh_lb * tanh_lb)
+        lmbda_ = torch.min(1 - tanh_ub * tanh_ub, 1 - tanh_lb * tanh_lb)
+
+        lambda_lb = torch.where(lb_layer > 0, lmbda, lmbda_)
+        mu_lb = torch.where(lb_layer > 0, tanh_lb - torch.mul(lmbda, lb_layer),  tanh_lb - torch.mul(lmbda_, lb_layer))
+        
+        lambda_ub = torch.where(ub_layer < 0, lmbda, lmbda_)
+        mu_ub =  torch.where(ub_layer < 0, tanh_ub - torch.mul(lmbda, ub_layer),  tanh_ub - torch.mul(lmbda_, lb_layer))
+
+        neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(diff_struct.lb_coef)
+        neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(diff_struct.ub_coef)
+        
+        lb_coef = neg_comp_lb * lambda_ub + pos_comp_lb * lambda_lb
+        ub_coef = neg_comp_ub * lambda_lb + pos_comp_ub * lambda_ub
+        lb_bias = diff_struct.lb_bias + neg_comp_lb @ mu_ub + pos_comp_lb @ mu_lb
+        ub_bias = diff_struct.ub_bias + pos_comp_ub @ mu_ub + neg_comp_ub @ mu_lb
+        diff_struct = DeepPolyStruct(lb_bias=lb_bias, lb_coef=lb_coef, ub_bias=ub_bias, ub_coef=ub_coef)
+
+        return diff_struct
 
 
     def get_layer_size(self, layer_index):
@@ -243,6 +269,8 @@ class DeepPolyTransformerOptimized:
                 diff_struct = self.analyze_relu(diff_struct=diff_struct, layer_idx=i)
             elif layer.type is LayerType.Sigmoid:
                 diff_struct = self.analyze_sigmoid(diff_struct=diff_struct, layer_idx=i)
+            elif layer.type is LayerType.TanH:
+                diff_struct = self.analyze_tanh(diff_struct=diff_struct, layer_idx=i)
             else:
                 raise ValueError(f'Unsupported Layer {layer.type}')
  
@@ -280,7 +308,9 @@ class DeepPolyTransformerOptimized:
         return self.back_propagation()
         
     def handle_tanh(self, layer):
-        raise NotImplementedError('Tanh is not implemented for DeepPoly')
+        self.layers.append(layer)
+        self.update_shape(layer=layer)
+        return self.back_propagation()
 
 
     def remove_non_affine_bounds(self):
@@ -316,6 +346,8 @@ class DeepPolyTransformerOptimized:
         return BaselineVerifierRes(input=self.prop.input, layer_lbs=self.lbs, layer_ubs=self.ubs, final_lb=final_lb, 
                                    final_ub = final_ub, lb_bias=diff_struct.lb_bias, lb_coef=diff_struct.lb_coef, 
                                    eps=self.eps, last_conv_diff_struct=self.last_conv_diff_struct)
+
+
 
 # 1. Implement DeepPoly - with tanh and sigmoid.
 # 2. Implement conv layer supressions.
