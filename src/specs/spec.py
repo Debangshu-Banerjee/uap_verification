@@ -273,7 +273,7 @@ def remove_unclassified_images(inputs, labels, dataset, net_name):
             inputs_normalised = norm_transform(inputs)
             outputs = converted_model(inputs_normalised)
             output_labels = torch.max(outputs, axis=1)[1]
-            print(f'matching tensor {output_labels == labels}')
+            # print(f'matching tensor {output_labels == labels}')
             inputs = inputs[output_labels == labels]
             labels = labels[output_labels == labels]
             return inputs, labels

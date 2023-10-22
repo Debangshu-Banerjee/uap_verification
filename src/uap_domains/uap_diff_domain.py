@@ -19,6 +19,7 @@ class UapDiff:
         self.input_lbs = []
         self.input_ubs = []
         self.constr_matrices = []
+        self.last_conv_diff_structs = []
         self.no_lp_for_verified = self.args.no_lp_for_verified
         self.lp_formulation_threshold = self.args.lp_formulation_threshold
         self.baseline_verified_props = 0
@@ -59,6 +60,10 @@ class UapDiff:
         for prop in self.props:
             self.constr_matrices.append(prop.get_input_clause(0).output_constr_mat())
     
+    def populate_diff_structs(self):
+        for res in self.baseline_results:
+            self.last_conv_diff_structs.append(res.last_conv_diff_struct)
+    
     def get_negative_threshold(self):
         lb_list = []
         for i, prop in enumerate(self.props):
@@ -96,9 +101,9 @@ class UapDiff:
             self.compute_difference_dict(monotone = monotone)
         self.populate_input_list()
         self.populate_lbs_and_ubs()
-        # if len(self.input_lbs) > 0:
-        #     print(f'input lb {self.input_lbs[0][-2]}')
-        #     print(f'input ub {self.input_ubs[0][-2]}')
+        if self.args is not None and self.args.fold_conv_layers is True:
+            self.populate_diff_structs()
+
         if monotone:
             verified_status = Status.UNKNOWN
             print(self.difference_lbs_dict[(0,1)][-1], self.difference_ubs_dict[(0,1)][-1])
@@ -131,7 +136,9 @@ class UapDiff:
             uap_lp_transformer = UAPLPtransformer(mdl=self.net, xs=self.input_list, 
                                                 eps=self.eps, x_lbs=self.input_lbs,
                                                 x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
-                                                d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
+                                                d_ubs=self.difference_ubs_dict, 
+                                                constraint_matrices=self.constr_matrices,
+                                                last_conv_diff_structs=self.last_conv_diff_structs,
                                                 debug_mode=self.args.debug_mode,
                                                 track_differences=False, props = self.props, monotone = monotone, args=self.args)
         else:
@@ -139,6 +146,7 @@ class UapDiff:
                                                 eps=self.eps, x_lbs=self.input_lbs,
                                                 x_ubs=self.input_ubs, d_lbs=self.difference_lbs_dict,
                                                 d_ubs=self.difference_ubs_dict, constraint_matrices=self.constr_matrices,
+                                                last_conv_diff_structs=self.last_conv_diff_structs,
                                                 debug_mode=self.args.debug_mode,
                                                 track_differences=self.args.track_differences, props = self.props, 
                                                 monotone = monotone, args=self.args)

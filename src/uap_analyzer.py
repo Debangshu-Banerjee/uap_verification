@@ -23,7 +23,8 @@ class UapAnalysisArgs:
                  radius_r=0.3, uap_mode=UAPMode.RADIUS, cutoff_percentage = 0.5,
                  compute_proportion=False, no_lp_for_verified=False, write_file = False, 
                  debug_mode=False, track_differences=True, monotone_prop = None, monotone_inv = False, 
-                 lp_formulation_threshold=2, try_image_smoothing=False, filter_threshold=None) -> None:
+                 lp_formulation_threshold=2, try_image_smoothing=False, filter_threshold=None, 
+                 fold_conv_layers=False) -> None:
         self.individual_prop_domain = individual_prop_domain
         self.domain = domain
         self.baseline_domain = baseline_domain
@@ -53,6 +54,7 @@ class UapAnalysisArgs:
         self.filter_threshold = filter_threshold
         # Always use all layer substitution for DiffPoly.
         self.all_layer_sub = True
+        self.fold_conv_layers = fold_conv_layers
         # if debug mode on rewrite params.
         if debug_mode == True:
             self.count = 1

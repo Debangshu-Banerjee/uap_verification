@@ -19,7 +19,7 @@ class DeepPolyStruct:
 
 
 class DeepPolyTransformerOptimized:
-    def __init__(self, prop, complete=False, device=None):
+    def __init__(self, prop, complete=False, device=None, args=None):
         self.lbs = []
         self.ubs = []
         self.prop = prop
@@ -36,6 +36,8 @@ class DeepPolyTransformerOptimized:
         self.iub = prop.input_ub
         self.input_shape = None
         self.eps = torch.max(self.iub - self.ilb) / 2.0
+        self.last_conv_diff_struct = None
+        self.args = args
         # Tracking shpes for supporting conv layers.
         self.shapes = []
         if self.size == 784:
@@ -243,10 +245,13 @@ class DeepPolyTransformerOptimized:
                 diff_struct = self.analyze_sigmoid(diff_struct=diff_struct, layer_idx=i)
             else:
                 raise ValueError(f'Unsupported Layer {layer.type}')
-            # self.print_shapes(diff_struct=diff_struct)
-
+ 
         curr_lb, curr_ub = self.concrete_substitution(diff_struct=diff_struct, 
                                                     lb_layer=self.ilb, ub_layer=self.iub)
+        if self.args is not None and self.args.fold_conv_layers is True:
+            if self.layers[-1].type is LayerType.Conv2D:
+                self.last_conv_diff_struct = diff_struct
+
         lb = curr_lb if lb is None else torch.max(lb, curr_lb)
         ub = curr_ub if ub is None else torch.min(ub, curr_ub)
         self.lbs.append(lb)
@@ -309,7 +314,8 @@ class DeepPolyTransformerOptimized:
         lb_debug, _ = self.concrete_substitution(diff_struct=diff_struct, lb_layer=self.ilb, ub_layer=self.iub)
 
         return BaselineVerifierRes(input=self.prop.input, layer_lbs=self.lbs, layer_ubs=self.ubs, final_lb=final_lb, 
-                                   final_ub = final_ub, lb_bias=diff_struct.lb_bias, lb_coef=diff_struct.lb_coef, eps=self.eps)
+                                   final_ub = final_ub, lb_bias=diff_struct.lb_bias, lb_coef=diff_struct.lb_coef, 
+                                   eps=self.eps, last_conv_diff_struct=self.last_conv_diff_struct)
 
 # 1. Implement DeepPoly - with tanh and sigmoid.
 # 2. Implement conv layer supressions.

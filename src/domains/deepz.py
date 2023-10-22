@@ -9,7 +9,7 @@ device = 'cpu'
 
 
 class ZonoTransformer:
-    def __init__(self, prop, cof_constrain=None, bias_constrain=None, complete=False):
+    def __init__(self, prop, cof_constrain=None, bias_constrain=None, complete=False, args=None):
         """
         ilb: the lower bound for the input variables
         iub: the upper bound for the input variables
@@ -25,6 +25,7 @@ class ZonoTransformer:
         # bound for each index. Currently the perturbation bound is only defined
         # for the final two layers.
         self.perturbation_scaling = {}
+        self.args = args
 
         # Following fields are used for complete verification
         self.complete = complete

@@ -20,8 +20,8 @@ def softtime(model, where):
 
 class UAPLPtransformer:
     def __init__(self, mdl, xs, eps, x_lbs, x_ubs, d_lbs, d_ubs, 
-                 constraint_matrices, debug_mode=False, track_differences=True, 
-                 props=None, monotone = False, args=None):
+                 constraint_matrices, last_conv_diff_structs=None, debug_mode=False, 
+                 track_differences=True, props=None, monotone = False, args=None):
         self.mdl = mdl
         self.xs = xs
         self.batch_size = len(xs)
@@ -37,6 +37,7 @@ class UAPLPtransformer:
         self.d_lbs = d_lbs
         self.d_ubs = d_ubs
         self.props = props
+        self.last_conv_diff_structs = last_conv_diff_structs
         # this tracks the index of the last linear (fully connected or conv) 
         # layer already. encountered its -1 at the beginning.
         self.linear_layer_idx = -1 
@@ -46,7 +47,7 @@ class UAPLPtransformer:
         self.debug = True
         self.debug_log_file = None
         self.constraint_matrices = constraint_matrices
-        self.tolerence = 2*1e-1
+        self.tolerence = 1e-3
         self.debug_mode = debug_mode
         self.track_differences = track_differences
         self.props = props
@@ -78,7 +79,11 @@ class UAPLPtransformer:
         self.gmdl.Params.MIPFocus = 3
         self.gmdl.Params.ConcurrentMIP = 3
         self.constraint_time = - time.time()
-        self.create_constraints()
+        # If
+        if self.args is not None and self.args.fold_conv_layers is True:
+            self.create_constraints_folded_conv_layers()
+        else:
+            self.create_constraints()
 
 
 
@@ -326,24 +331,122 @@ class UAPLPtransformer:
             elif layer_type == LayerType.Conv2D:
                 self.linear_layer_idx += 1                
                 self.create_conv2d_constraints(layer, layer_idx)
+            elif layer_type == LayerType.Sigmoid:
+                self.create_sigmoid_constraints(layer_idx=layer_idx)
+                if self.args is not None and self.args.all_layer_sub is True:
+                    self.linear_layer_idx += 1                
             elif layer_type == LayerType.Flatten:
                 continue
             else:
                 raise TypeError(f"Unsupported Layer Type '{layer_type}'")
     
+    def add_coefs_lb_ub(self, layer_idx):
+        if self.last_conv_diff_structs is None:
+            raise ValueError(f'Diff sturcts is None')
+        
+        if len(self.last_conv_diff_structs) != self.batch_size:
+            raise ValueError(f'Diff sturcts length: {len(self.last_conv_diff_structs)} != batch size: {self.batch_size}')
+
+        vs, ds = self.create_vars(layer_idx, 'linear')
+
+        for i, v in enumerate(vs):
+            diff_struct = self.last_conv_diff_structs[i]
+            lb_coef = diff_struct.lb_coef.detach().numpy()
+            lb_bias = diff_struct.lb_bias.detach().numpy()
+            ub_coef = diff_struct.ub_coef.detach().numpy()
+            ub_bias = diff_struct.ub_bias.detach().numpy()
+            self.gmdl.addConstr(v >= lb_coef @ self.gurobi_variables[-1]['vs'][i] + lb_bias)     
+            self.gmdl.addConstr(v <= ub_coef @ self.gurobi_variables[-1]['vs'][i] + ub_bias)
+
+        if self.track_differences is True:
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    self.gmdl.addConstr(ds[i][j - i - 1] == vs[i] - vs[j])
+        
+        self.gurobi_variables.append({'vs': vs, 'ds': ds})
+    
+    def create_constraints_folded_conv_layers(self):
+        self.create_input_constraints()
+        layers = self.mdl
+        # Prune conv layers.
+        layer_idx = 0
+        for layer in layers:
+            layer_type = self.get_layer_type(layer)
+            if layer_type == LayerType.Linear:
+                break
+            elif layer_type in [LayerType.ReLU, LayerType.Sigmoid, LayerType.TanH]:
+                if self.args is not None and self.args.all_layer_sub is True:
+                    self.linear_layer_idx += 1
+            elif layer_type == LayerType.Conv2D:
+                self.linear_layer_idx += 1                                
+            elif layer_type == LayerType.Flatten:
+                continue
+            else:
+                raise TypeError(f"Unsupported Layer Type '{layer_type}'")
+            layer_idx += 1
+
+        # Go back one idx 
+        layer_idx -= 2
+        if self.args is not None and self.args.all_layer_sub is True:
+            self.linear_layer_idx -= 1        
+
+        self.add_coefs_lb_ub(layer_idx=layer_idx)
+        layer_idx += 1
+
+        for i in range(layer_idx, len(layers)):
+            layer = layers[i]
+            layer_type = self.get_layer_type(layer)
+            if layer_type == LayerType.Linear:
+                self.linear_layer_idx += 1
+                self.create_linear_constraints(layer, i)
+            elif layer_type == LayerType.ReLU:
+                self.create_relu_constraints(i)
+                if self.args is not None and self.args.all_layer_sub is True:
+                    self.linear_layer_idx += 1
+            elif layer_type == LayerType.Conv2D:
+                self.linear_layer_idx += 1                
+                self.create_conv2d_constraints(layer, i)
+            elif layer_type == LayerType.Sigmoid:
+                self.create_sigmoid_constraints(layer_idx=i)
+                if self.args is not None and self.args.all_layer_sub is True:
+                    self.linear_layer_idx += 1                
+            elif layer_type == LayerType.Flatten:
+                continue
+            else:
+                raise TypeError(f"Unsupported Layer Type '{layer_type}'")
+
+
+
     def create_vars(self, layer_idx, layer_type=''):
         ds = None
         if layer_type in ['linear', 'conv2d']:            
-            vs = [self.gmdl.addMVar(self.x_lbs[i][self.linear_layer_idx].shape[0], lb = self.x_lbs[i][self.linear_layer_idx], ub = self.x_ubs[i][self.linear_layer_idx], vtype=grb.GRB.CONTINUOUS, name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
+            vs = [self.gmdl.addMVar(self.x_lbs[i][layer_idx].shape[0], lb = self.x_lbs[i][layer_idx], ub = self.x_ubs[i][layer_idx], vtype=grb.GRB.CONTINUOUS, name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
             if self.track_differences is True:
-                ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], lb=self.d_lbs[(i, j)][self.linear_layer_idx] - self.tolerence, ub=self.d_ubs[(i, j)][self.linear_layer_idx] + self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
+                ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][layer_idx].shape[0], lb=self.d_lbs[(i, j)][layer_idx] - self.tolerence, ub=self.d_ubs[(i, j)][layer_idx] + self.tolerence, vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
         elif layer_type == 'relu':
-            vs = [self.gmdl.addMVar(self.x_lbs[i][self.linear_layer_idx].shape[0], lb =np.maximum(self.x_lbs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])),
-                                     ub = np.maximum(self.x_ubs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])), vtype=grb.GRB.CONTINUOUS, name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
+            vs = [self.gmdl.addMVar(self.x_lbs[i][layer_idx].shape[0], lb=self.x_lbs[i][layer_idx],
+                                     ub = self.x_ubs[i][layer_idx], vtype=grb.GRB.CONTINUOUS, 
+                                     name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
             if self.track_differences is True:
-                ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][self.linear_layer_idx].shape[0], lb=np.maximum(self.x_lbs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])) - np.maximum(self.x_ubs[j][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])),
-                                     ub=np.maximum(self.x_ubs[i][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])) - np.maximum(self.x_lbs[j][self.linear_layer_idx], np.zeros(self.x_ubs[i][self.linear_layer_idx].shape[0])),
+                if self.args is not None and self.args.all_layer_sub is True:
+                    ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][layer_idx].shape[0], lb=self.d_lbs[(i, j)][layer_idx] -self.tolerence,
+                            ub=self.d_ubs[(i, j)][layer_idx] + self.tolerence,
+                            vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
+
+                else:     
+                    ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][layer_idx].shape[0], lb=self.d_lbs[(i, j)][layer_idx],
+                                     ub=self.d_ubs[(i, j)][layer_idx],
                                       vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]
+        elif layer_type == 'sigmoid':
+            vs = [self.gmdl.addMVar(self.x_lbs[i][layer_idx].shape[0], lb = self.x_lbs[i][layer_idx],
+                                     ub = self.x_ubs[i][layer_idx], vtype=grb.GRB.CONTINUOUS, 
+                                     name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
+            if self.track_differences is True:
+                ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][layer_idx].shape[0], 
+                                        lb=self.d_lbs[(i, j)][layer_idx] - self.tolerence,
+                                        ub=self.d_ubs[(i, j)][layer_idx] + self.tolerence,
+                                        vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') 
+                                        for j in range(i+1, self.batch_size)] for i in range(self.batch_size)]        
         else:
             raise ValueError(f'layer type {layer_type} is supported yet')
 
@@ -363,7 +466,7 @@ class UAPLPtransformer:
         #     self.gmdl.setObjective(vs[0][1], grb.GRB.MINIMIZE)
         #     self.gmdl.optimize()
         #     v_lb = vs[0][1].X
-        #     base_lb = self.x_lbs[0][self.linear_layer_idx][1]
+        #     base_lb = self.x_lbs[0][layer_idx][1]
         #     base_ub = self.x_ubs[0][self.linear_layer_idx][1]            
         #     self.gmdl.setObjective(vs[0][1], grb.GRB.MAXIMIZE)
         #     self.gmdl.optimize()
@@ -371,10 +474,10 @@ class UAPLPtransformer:
         #     self.debug_log_file.write(f"lb : {v_lb} ub : {v_ub}\n\n")
         #     self.debug_log_file.write(f"baseline lb  : {base_lb} ub : {base_ub}\n\n")
         if self.track_differences is True:
-            for i in range(self.batch_size):
-                for j in range(i+1, self.batch_size):
-                    self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].detach().numpy() + self.tolerence))
-                    self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].detach().numpy() - self.tolerence))
+            # for i in range(self.batch_size):
+            #     for j in range(i+1, self.batch_size):
+            #         self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].detach().numpy() + self.tolerence))
+            #         self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].detach().numpy() - self.tolerence))
 
             for i in range(self.batch_size):
                 for j in range(i+1, self.batch_size):
@@ -400,7 +503,7 @@ class UAPLPtransformer:
             self.gmdl.addConstr(vs[i] >= 0)
             self.gmdl.addConstr(vs[i] >= self.gurobi_variables[-1]['vs'][i])
             tensor_length = self.x_lbs[i][self.linear_layer_idx].shape[0] 
-            for j in range(tensor_length):                    
+            for j in range(tensor_length):               
                 if self.x_lbs[i][self.linear_layer_idx][j] >= 0:
                     self.gmdl.addConstr(vs[i][j] <= self.gurobi_variables[-1]['vs'][i][j])
                     continue 
@@ -458,6 +561,89 @@ class UAPLPtransformer:
                             self.gmdl.addConstr(ds[i][j - i -1][k] <= d_lambda_ub * self.gurobi_variables[-1]['ds'][i][j - i -1][k] + d_mu_ub)                                                
                                     
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
+
+    def get_sigmoid_lambda_mu(self, lb_layer, ub_layer):
+        sigmoid_lb, sigmoid_ub = torch.sigmoid(lb_layer), torch.sigmoid(ub_layer)
+        lmbda = torch.where(lb_layer < ub_layer, (sigmoid_ub - sigmoid_lb) / (ub_layer - lb_layer + 1e-15),  sigmoid_lb * (1 - sigmoid_lb))
+        lmbda_ = torch.min(sigmoid_ub * (1 - sigmoid_ub), sigmoid_lb * (1 - sigmoid_lb))
+        lambda_lb = torch.where(lb_layer > 0, lmbda, lmbda_)
+        mu_lb = torch.where(lb_layer > 0, sigmoid_lb - torch.mul(lmbda, lb_layer),  sigmoid_lb - torch.mul(lmbda_, lb_layer))
+        lambda_ub = torch.where(ub_layer < 0, lmbda, lmbda_)
+        mu_ub =  torch.where(ub_layer < 0, sigmoid_ub - torch.mul(lmbda, ub_layer),  sigmoid_ub - torch.mul(lmbda_, lb_layer))
+        return lambda_lb, mu_lb, lambda_ub, mu_ub
+
+
+    def get_sigmoid_diff_lambda_mu(self, lb, ub, delta_lb_layer, delta_ub_layer):
+        sigmoid_lb, sigmoid_ub = torch.sigmoid(lb), torch.sigmoid(ub)
+        lambda_lower, lambda_upper = sigmoid_lb * (1.0 - sigmoid_lb), sigmoid_ub * (1.0 - sigmoid_ub)
+
+        delta_active = (delta_lb_layer >= 0)
+        delta_passive = (delta_ub_layer <= 0)
+        delta_unsettled = ~(delta_active) & ~(delta_passive)
+
+        lambda_lb = torch.zeros(lb.size(), device='cpu')
+        lambda_ub = torch.zeros(lb.size(), device='cpu')
+
+        mu_lb = torch.zeros(lb.size(), device='cpu')
+        mu_ub = torch.zeros(lb.size(), device='cpu')
+
+        # case 1 lb >= 0 or ub <= 0
+        lambda_lb = torch.where(~delta_unsettled, lambda_lower, lambda_lb)
+        lambda_ub = torch.where(~delta_unsettled, lambda_upper, lambda_ub)
+
+        # case 2 lb < 0 and ub > 0
+        prod_lb_ub = delta_lb_layer * delta_ub_layer
+        diff_lb_ub = (delta_ub_layer - delta_lb_layer + 1e-15)
+        temp_lambda_lb = (lambda_upper * delta_ub_layer - 0.25* delta_lb_layer) / diff_lb_ub
+        temp_lambda_ub = (0.25 * delta_ub_layer - lambda_lower * delta_lb_layer) / diff_lb_ub
+    
+        temp_mu_lb = (0.25 - lambda_upper) * prod_lb_ub
+        temp_mu_lb = temp_mu_lb / diff_lb_ub
+        temp_mu_ub = (lambda_lower - 0.25) * prod_lb_ub
+        temp_mu_ub = temp_mu_ub / diff_lb_ub
+
+        lambda_lb = torch.where(~delta_unsettled, temp_lambda_lb, lambda_lb)
+        lambda_ub = torch.where(~delta_unsettled, temp_lambda_ub, lambda_ub)
+        mu_lb = torch.where(~delta_unsettled, temp_mu_lb, mu_lb)
+        mu_ub = torch.where(~delta_unsettled, temp_mu_ub, mu_ub)
+
+        return lambda_lb, mu_lb, lambda_ub, mu_ub
+
+
+    def create_sigmoid_constraints(self, layer_idx):
+        vs, ds = self.create_vars(layer_idx, 'sigmoid')
+        for i in range(self.batch_size):
+            tensor_length = self.x_lbs[i][self.linear_layer_idx].shape[0]
+            lb, ub = self.x_lbs[i][layer_idx-1], self.x_ubs[i][layer_idx-1]
+            lambda_lb, mu_lb, lambda_ub, mu_ub = self.get_sigmoid_lambda_mu(lb_layer=lb, ub_layer=ub)
+            for j in range(tensor_length):
+                self.gmdl.addConstr(vs[i][j] <= lambda_ub[j] * self.gurobi_variables[-1]['vs'][i][j] + mu_ub[j])
+                self.gmdl.addConstr(vs[i][j] >= lambda_lb[j] * self.gurobi_variables[-1]['vs'][i][j] + mu_lb[j])
+
+        if self.track_differences is True:
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    self.gmdl.addConstr(ds[i][j - i - 1] == vs[i] - vs[j])
+
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    tensor_length = self.x_lbs[i][self.linear_layer_idx].shape[0]
+                    lb = torch.min(self.x_lbs[i][layer_idx-1], self.x_lbs[j][layer_idx-1])
+                    ub = torch.max(self.x_ubs[i][layer_idx-1], self.x_ubs[j][layer_idx-1])
+                    d_lb = self.d_lbs[(i, j)][layer_idx-1]
+                    d_ub = self.d_ubs[(i, j)][layer_idx-1]
+                    lambda_lb, mu_lb, lambda_ub, mu_ub = self.get_sigmoid_diff_lambda_mu(lb=lb, ub=ub,
+                                                                                        delta_lb_layer=d_lb,
+                                                                                        delta_ub_layer=d_ub)
+                    for k in range(tensor_length):
+                        self.gmdl.addConstr(ds[i][j - i -1][k] >= lambda_lb[k]*self.gurobi_variables[-1]['ds'][i][j - i -1][k]
+                                                                 + mu_lb[k])
+                        self.gmdl.addConstr(ds[i][j - i -1][k] <= lambda_ub[k]*self.gurobi_variables[-1]['ds'][i][j - i -1][k]
+                                                                 + mu_ub[k])
+        
+        self.gurobi_variables.append({'vs': vs, 'ds': ds})
+
+
 
     def create_conv2d_constraints_helper(self, vars, pre_vars, num_kernel, output_h, 
                                          output_w, bias, weight, layer, input_h, input_w):
@@ -523,10 +709,10 @@ class UAPLPtransformer:
                                                   bias=bias, weight=weight, layer=layer, input_h=input_h, input_w=input_w)
 
         if self.track_differences is True:
-            for i in range(self.batch_size):
-                for j in range(i+1, self.batch_size):
-                    self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].detach().numpy() + self.tolerence))
-                    self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].detach().numpy() - self.tolerence))
+            # for i in range(self.batch_size):
+            #     for j in range(i+1, self.batch_size):
+            #         self.gmdl.addConstr(vs[i] - vs[j] <= (self.d_ubs[(i, j)][self.linear_layer_idx].detach().numpy() + self.tolerence))
+            #         self.gmdl.addConstr(vs[i] - vs[j] >= (self.d_lbs[(i, j)][self.linear_layer_idx].detach().numpy() - self.tolerence))
 
             for i in range(self.batch_size):
                 for j in range(i+1, self.batch_size):
