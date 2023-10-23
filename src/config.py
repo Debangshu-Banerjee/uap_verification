@@ -75,7 +75,8 @@ MNIST_FFN_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
 MNIST_CONV_MED = 'mnistconvMedGRELU__Point.onnx'
 MNIST_CONV_BIG = 'mnistconvBigRELU__DiffAI.onnx'
 MNIST_CONV_SIGMOID = 'convMedGSIGMOID__PGDK_w_0.3.onnx'
-
+MNIST_CONV_TANH = "convMedGTANH__PGDK_w_0.3.onnx"
+MNIST_FFN_SIGMOID = "ffnnSIGMOID__PGDK_w_0.3_6_500.onnx"
 
 # MNIST crown-ibp network
 MNIST_CROWN_IBP = "mnist_cnn_2layer_width_1_best.pth"
@@ -113,7 +114,7 @@ HOUSING_2LAYER_100 = 'monotonic_2layer_100.onnx'
 HOUSING_2LAYER_200 = 'monotonic_2layer_200.onnx'
 
 
-linear_models = [MNIST_FFN_L2, MNIST_LINEAR_50, MNIST_LINEAR_100, MNIST_FFN_L4, MNIST_BINARY]
+linear_models = [MNIST_FFN_L2, MNIST_LINEAR_50, MNIST_LINEAR_100, MNIST_FFN_L4, MNIST_BINARY, MNIST_FFN_SIGMOID]
 
 class MONOTONE_PROP(IntEnum):
     CRIM = 0

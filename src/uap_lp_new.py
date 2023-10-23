@@ -336,9 +336,9 @@ class UAPLPtransformer:
                 if self.args is not None and self.args.all_layer_sub is True:
                     self.linear_layer_idx += 1
             elif layer_type == LayerType.TanH:
-                self.create_sigmoid_constraints(layer_idx=layer_idx)
+                self.create_tanh_constraints(layer_idx=layer_idx)
                 if self.args is not None and self.args.all_layer_sub is True:
-                    self.linear_layer_idx += 1                
+                    self.linear_layer_idx += 1
             elif layer_type == LayerType.Flatten:
                 continue
             else:
@@ -413,6 +413,10 @@ class UAPLPtransformer:
             elif layer_type == LayerType.Sigmoid:
                 self.create_sigmoid_constraints(layer_idx=i)
                 if self.args is not None and self.args.all_layer_sub is True:
+                    self.linear_layer_idx += 1
+            elif layer_type == LayerType.TanH:
+                self.create_tanh_constraints(layer_idx=i)
+                if self.args is not None and self.args.all_layer_sub is True:
                     self.linear_layer_idx += 1                
             elif layer_type == LayerType.Flatten:
                 continue
@@ -466,17 +470,6 @@ class UAPLPtransformer:
         for v_idx, v in enumerate(vs):
             self.gmdl.addConstr(v == weight @ self.gurobi_variables[-1]['vs'][v_idx] + bias)
 
-        # if self.debug:
-        #     self.gmdl.setObjective(vs[0][1], grb.GRB.MINIMIZE)
-        #     self.gmdl.optimize()
-        #     v_lb = vs[0][1].X
-        #     base_lb = self.x_lbs[0][layer_idx][1]
-        #     base_ub = self.x_ubs[0][self.linear_layer_idx][1]            
-        #     self.gmdl.setObjective(vs[0][1], grb.GRB.MAXIMIZE)
-        #     self.gmdl.optimize()
-        #     v_ub = vs[0][1].X
-        #     self.debug_log_file.write(f"lb : {v_lb} ub : {v_ub}\n\n")
-        #     self.debug_log_file.write(f"baseline lb  : {base_lb} ub : {base_ub}\n\n")
         if self.track_differences is True:
             # for i in range(self.batch_size):
             #     for j in range(i+1, self.batch_size):
@@ -580,6 +573,16 @@ class UAPLPtransformer:
     def get_sigmoid_diff_lambda_mu(self, lb, ub, delta_lb_layer, delta_ub_layer):
         sigmoid_lb, sigmoid_ub = torch.sigmoid(lb), torch.sigmoid(ub)
         lambda_lower, lambda_upper = sigmoid_lb * (1.0 - sigmoid_lb), sigmoid_ub * (1.0 - sigmoid_ub)
+        
+        input_active = (lb >= 0)
+        input_passive = (ub <= 0) 
+        input_unsettled = ~(input_active) & ~(input_passive)
+
+        deriv_min = torch.min(lambda_lower, lambda_upper)
+        deriv_max = 0.25 * torch.ones(lb.size(), device='cpu')
+        deriv_max = torch.where(~input_unsettled, torch.max(lambda_lower, lambda_upper), deriv_max)
+
+
 
         delta_active = (delta_lb_layer >= 0)
         delta_passive = (delta_ub_layer <= 0)
@@ -591,25 +594,29 @@ class UAPLPtransformer:
         mu_lb = torch.zeros(lb.size(), device='cpu')
         mu_ub = torch.zeros(lb.size(), device='cpu')
 
-        # case 1 lb >= 0 or ub <= 0
-        lambda_lb = torch.where(~delta_unsettled, lambda_lower, lambda_lb)
-        lambda_ub = torch.where(~delta_unsettled, lambda_upper, lambda_ub)
+        # case 1 delta_lb >= 0 
+        lambda_lb = torch.where(delta_active, deriv_min, lambda_lb)
+        lambda_ub = torch.where(delta_active, deriv_max, lambda_ub)
 
-        # case 2 lb < 0 and ub > 0
+        # case 2 delta_lb >= 0 
+        lambda_lb = torch.where(delta_passive, deriv_max, lambda_lb)
+        lambda_ub = torch.where(delta_passive, deriv_min, lambda_ub)
+
+        # case 2 delta_lb < 0 and delta_ub > 0
         prod_lb_ub = delta_lb_layer * delta_ub_layer
         diff_lb_ub = (delta_ub_layer - delta_lb_layer + 1e-15)
-        temp_lambda_lb = (lambda_upper * delta_ub_layer - 0.25* delta_lb_layer) / diff_lb_ub
-        temp_lambda_ub = (0.25 * delta_ub_layer - lambda_lower * delta_lb_layer) / diff_lb_ub
+        temp_lambda_lb = (deriv_min * delta_ub_layer - 0.25* delta_lb_layer) / diff_lb_ub
+        temp_lambda_ub = (0.25 * delta_ub_layer - deriv_min * delta_lb_layer) / diff_lb_ub
     
-        temp_mu_lb = (0.25 - lambda_upper) * prod_lb_ub
+        temp_mu_lb = (0.25 - deriv_min) * prod_lb_ub
         temp_mu_lb = temp_mu_lb / diff_lb_ub
-        temp_mu_ub = (lambda_lower - 0.25) * prod_lb_ub
+        temp_mu_ub = (deriv_min - 0.25) * prod_lb_ub
         temp_mu_ub = temp_mu_ub / diff_lb_ub
 
-        lambda_lb = torch.where(~delta_unsettled, temp_lambda_lb, lambda_lb)
-        lambda_ub = torch.where(~delta_unsettled, temp_lambda_ub, lambda_ub)
-        mu_lb = torch.where(~delta_unsettled, temp_mu_lb, mu_lb)
-        mu_ub = torch.where(~delta_unsettled, temp_mu_ub, mu_ub)
+        lambda_lb = torch.where(delta_unsettled, temp_lambda_lb, lambda_lb)
+        lambda_ub = torch.where(delta_unsettled, temp_lambda_ub, lambda_ub)
+        mu_lb = torch.where(delta_unsettled, temp_mu_lb, mu_lb)
+        mu_ub = torch.where(delta_unsettled, temp_mu_ub, mu_ub)
 
         return lambda_lb, mu_lb, lambda_ub, mu_ub
 
@@ -647,9 +654,106 @@ class UAPLPtransformer:
         
         self.gurobi_variables.append({'vs': vs, 'ds': ds})
 
+    
+    def get_tanh_lambda_mu(self, lb_layer, ub_layer):
+        # lmb = (su - sl) / (u - l) if l < u else 1 - sl * sl
+        # lmb_ = torch.min(1 - su * su, 1 - sl * sl)
+        tanh_lb, tanh_ub = torch.tanh(lb_layer), torch.tanh(ub_layer)
+        lmbda = torch.where(lb_layer < ub_layer, (tanh_ub - tanh_lb) / (ub_layer - lb_layer + 1e-15),  1 - tanh_lb * tanh_lb)
+        lmbda_ = torch.min(1 - tanh_ub * tanh_ub, 1 - tanh_lb * tanh_lb)
+
+        lambda_lb = torch.where(lb_layer > 0, lmbda, lmbda_)
+        mu_lb = torch.where(lb_layer > 0, tanh_lb - torch.mul(lmbda, lb_layer),  tanh_lb - torch.mul(lmbda_, lb_layer))
+        
+        lambda_ub = torch.where(ub_layer < 0, lmbda, lmbda_)
+        mu_ub =  torch.where(ub_layer < 0, tanh_ub - torch.mul(lmbda, ub_layer),  tanh_ub - torch.mul(lmbda_, lb_layer))
+
+        return lambda_lb, mu_lb, lambda_ub, mu_ub
+
+    def get_tanh_diff_lambda_mu(self, lb, ub, delta_lb_layer, delta_ub_layer):
+        tanh_lb, tanh_ub = torch.tanh(lb), torch.tanh(ub)
+        lambda_lower, lambda_upper = 1.0 - (tanh_lb * tanh_lb), 1.0 - (tanh_ub * tanh_ub)
+
+        input_active = (lb >= 0)
+        input_passive = (ub <= 0) 
+        input_unsettled = ~(input_active) & ~(input_passive)
+
+        deriv_min = torch.min(lambda_lower, lambda_upper)
+        deriv_max = torch.ones(lb.size(), device='cpu')
+        deriv_max = torch.where(~input_unsettled, torch.max(lambda_lower, lambda_upper), deriv_max)
+
+
+
+        delta_active = (delta_lb_layer >= 0)
+        delta_passive = (delta_ub_layer <= 0)
+        delta_unsettled = ~(delta_active) & ~(delta_passive)
+
+        lambda_lb = torch.zeros(lb.size(), device='cpu')
+        lambda_ub = torch.zeros(lb.size(), device='cpu')
+
+        mu_lb = torch.zeros(lb.size(), device='cpu')
+        mu_ub = torch.zeros(lb.size(), device='cpu')
+
+        # case 1 delta_lb >= 0 
+        lambda_lb = torch.where(delta_active, deriv_min, lambda_lb)
+        lambda_ub = torch.where(delta_active, deriv_max, lambda_ub)
+
+        # case 2 delta_lb >= 0 
+        lambda_lb = torch.where(delta_passive, deriv_max, lambda_lb)
+        lambda_ub = torch.where(delta_passive, deriv_min, lambda_ub)
+
+        # case 2 delta_lb < 0 and delta_ub > 0
+        prod_lb_ub = delta_lb_layer * delta_ub_layer
+        diff_lb_ub = (delta_ub_layer - delta_lb_layer + 1e-15)
+        temp_lambda_lb = (deriv_min * delta_ub_layer - delta_lb_layer) / diff_lb_ub
+        temp_lambda_ub = (delta_ub_layer - deriv_min * delta_lb_layer) / diff_lb_ub
+    
+        temp_mu_lb = (1.0 - deriv_min) * prod_lb_ub
+        temp_mu_lb = temp_mu_lb / diff_lb_ub
+        temp_mu_ub = (deriv_min - 1.0) * prod_lb_ub
+        temp_mu_ub = temp_mu_ub / diff_lb_ub
+
+        lambda_lb = torch.where(delta_unsettled, temp_lambda_lb, lambda_lb)
+        lambda_ub = torch.where(delta_unsettled, temp_lambda_ub, lambda_ub)
+        mu_lb = torch.where(delta_unsettled, temp_mu_lb, mu_lb)
+        mu_ub = torch.where(delta_unsettled, temp_mu_ub, mu_ub)
+
+        return lambda_lb, mu_lb, lambda_ub, mu_ub
+
 
     def create_tanh_constraints(self, layer_idx):
-        pass
+        vs, ds = self.create_vars(layer_idx, 'tanh')
+        for i in range(self.batch_size):
+            tensor_length = self.x_lbs[i][self.linear_layer_idx].shape[0]
+            lb, ub = self.x_lbs[i][layer_idx-1], self.x_ubs[i][layer_idx-1]
+            lambda_lb, mu_lb, lambda_ub, mu_ub = self.get_tanh_lambda_mu(lb_layer=lb, ub_layer=ub)
+            for j in range(tensor_length):
+                self.gmdl.addConstr(vs[i][j] <= lambda_ub[j] * self.gurobi_variables[-1]['vs'][i][j] + mu_ub[j])
+                self.gmdl.addConstr(vs[i][j] >= lambda_lb[j] * self.gurobi_variables[-1]['vs'][i][j] + mu_lb[j])
+
+        if self.track_differences is True:
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    self.gmdl.addConstr(ds[i][j - i - 1] == vs[i] - vs[j])
+
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    tensor_length = self.x_lbs[i][self.linear_layer_idx].shape[0]
+                    lb = torch.min(self.x_lbs[i][layer_idx-1], self.x_lbs[j][layer_idx-1])
+                    ub = torch.max(self.x_ubs[i][layer_idx-1], self.x_ubs[j][layer_idx-1])
+                    d_lb = self.d_lbs[(i, j)][layer_idx-1]
+                    d_ub = self.d_ubs[(i, j)][layer_idx-1]
+                    lambda_lb, mu_lb, lambda_ub, mu_ub = self.get_tanh_diff_lambda_mu(lb=lb, ub=ub,
+                                                                                        delta_lb_layer=d_lb,
+                                                                                        delta_ub_layer=d_ub)
+                    for k in range(tensor_length):
+                        self.gmdl.addConstr(ds[i][j - i -1][k] >= lambda_lb[k]*self.gurobi_variables[-1]['ds'][i][j - i -1][k]
+                                                                 + mu_lb[k])
+                        self.gmdl.addConstr(ds[i][j - i -1][k] <= lambda_ub[k]*self.gurobi_variables[-1]['ds'][i][j - i -1][k]
+                                                                 + mu_ub[k])
+        
+        self.gurobi_variables.append({'vs': vs, 'ds': ds})
+
 
     def create_conv2d_constraints_helper(self, vars, pre_vars, num_kernel, output_h, 
                                          output_w, bias, weight, layer, input_h, input_w):

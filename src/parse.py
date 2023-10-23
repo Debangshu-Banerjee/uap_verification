@@ -87,7 +87,9 @@ def parse_onnx_layers(net):
         elif operation == 'Sigmoid':
             final_activation = True
             layers.append(Layer(type=LayerType.Sigmoid))
-
+        elif operation == 'Tanh':
+            final_activation = True
+            layers.append(Layer(type=LayerType.TanH))
         
         # Handle operation Sigmoid and TanH.
     
