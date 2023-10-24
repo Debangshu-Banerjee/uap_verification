@@ -283,16 +283,19 @@ class DiffDeepPoly:
             lb = lb + neg_comp_lb_input2 @ ub_input2_layer + pos_comp_lb_input2 @ lb_input2_layer
 
         ub = neg_comp_ub @ delta_lb_layer + pos_comp_ub @ delta_ub_layer + back_prop_struct.delta_ub_bias
-        if back_prop_struct.delta_lb_input1_coef is not None:
-            ub = ub + neg_comp_ub_input1 @ lb_input1_layer + pos_comp_ub_input1 @ ub_input1_layer
-            ub = ub + neg_comp_ub_input2 @ lb_input2_layer + pos_comp_ub_input2 @ ub_input2_layer
-
         lb_new, ub_new = self.refine_diff_bounds(back_prop_struct=back_prop_struct, lb_input1_layer=lb_input1_layer,
                                                 ub_input1_layer=ub_input1_layer, lb_input2_layer=lb_input2_layer,
                                                 ub_input2_layer=ub_input2_layer, layer_idx=layer_idx)
         self.check_lb_ub_correctness(lb=lb_new, ub=ub_new)
         self.check_lb_ub_correctness(lb=lb, ub=ub)
+        if back_prop_struct.delta_lb_input1_coef is not None:
+            ub = ub + neg_comp_ub_input1 @ lb_input1_layer + pos_comp_ub_input1 @ ub_input1_layer
+            ub = ub + neg_comp_ub_input2 @ lb_input2_layer + pos_comp_ub_input2 @ ub_input2_layer
+
         return torch.max(lb, lb_new), torch.min(ub, ub_new)
+        # self.log_file.write(f'\n\n*** RATION### {torch.div(ub_new - lb_new, ub - lb + 1e-15)} ***\n\n')
+        # return lb, ub
+
 
     # Consider cases based on the state of the relu for different propagation.
     def handle_relu(self, back_prop_struct, 
@@ -914,7 +917,9 @@ class DiffDeepPoly:
         delta_ub = None
         # Assuming the network has alternate affine and activation layer.
         linear_layer_index = layer_idx // 2
+        print("\n\n")
         for i in reversed(range(layer_idx + 1)):
+            print(f'layer {self.net[i].type}')
             if back_prop_struct is not None:
                 new_delta_lb, new_delta_ub = self.concretize_bounds(back_prop_struct=back_prop_struct,delta_lb_layer=delta_lbs[i], 
                                                                     delta_ub_layer=delta_ubs[i],

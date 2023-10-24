@@ -114,7 +114,14 @@ HOUSING_2LAYER_100 = 'monotonic_2layer_100.onnx'
 HOUSING_2LAYER_200 = 'monotonic_2layer_200.onnx'
 
 
-linear_models = [MNIST_FFN_L2, MNIST_LINEAR_50, MNIST_LINEAR_100, MNIST_FFN_L4, MNIST_BINARY, MNIST_FFN_SIGMOID]
+linear_models = [MNIST_FFN_L2, MNIST_LINEAR_50, MNIST_LINEAR_100, MNIST_FFN_L4]
+
+def is_linear_model(net_name):
+    for name in linear_models:
+        if name in net_name:
+            return True
+    return False
+
 
 class MONOTONE_PROP(IntEnum):
     CRIM = 0
