@@ -87,7 +87,6 @@ class UAPLPtransformer:
         if self.args is not None and self.args.fold_conv_layers is True:
             self.create_constraints_folded_conv_layers()
         else:
-            print('hi')
             if self.par_constraints:
                 self.create_parallel_constraints()
             else:
