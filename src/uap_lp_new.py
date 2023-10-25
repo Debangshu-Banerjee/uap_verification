@@ -43,6 +43,7 @@ class UAPLPtransformer:
         self.linear_layer_idx = -1 
         self.gmdl = grb.Model()
         self.gurobi_variables = []
+        self.gurobi_var_dict = {}
         self.debug_log_filename = './debug_logs/uap_lp_debug_log.txt'
         self.debug = True
         self.debug_log_file = None
@@ -55,6 +56,9 @@ class UAPLPtransformer:
         self.constraint_time = None
         self.optimize_time = None
         self.args = args
+        self.g_constrs = []
+        self.par_constraints = True
+        self.bint = 1e15
     
     def set_shape(self):
         if self.input_size == 784:
@@ -83,7 +87,11 @@ class UAPLPtransformer:
         if self.args is not None and self.args.fold_conv_layers is True:
             self.create_constraints_folded_conv_layers()
         else:
-            self.create_constraints()
+            print('hi')
+            if self.par_constraints:
+                self.create_parallel_constraints()
+            else:
+                self.create_constraints()
 
 
 
@@ -230,7 +238,7 @@ class UAPLPtransformer:
         for i, constraint_mat in enumerate(self.constraint_matrices):
             final_var = self.gmdl.addMVar(constraint_mat.shape[1], lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, 
                                             name=f'final_var_{i}')
-            self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_variables[-1]['vs'][i])
+            self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_var_dict[len(self.gurobi_var_dict) - 2]['vs'][i])
             final_vars.append(final_var)
             final_var_min = self.gmdl.addVar(lb=-float('inf'), ub=float('inf'), 
                                                 vtype=grb.GRB.CONTINUOUS, 
@@ -344,6 +352,268 @@ class UAPLPtransformer:
             else:
                 raise TypeError(f"Unsupported Layer Type '{layer_type}'")
     
+    def create_parallel_constraints(self):
+        t = -time.time()
+        self.create_variables()
+        print('create variables time', time.time() + t)
+        t = -time.time()
+        self.parallel_generate_constraints()
+        print('num constraints', len(self.g_constrs))
+        print('create constraints time', time.time() + t)
+        t = -time.time()
+        self.create_gurobi_model()
+        print('create gurobi model time', time.time() + t)
+
+    def create_variables(self):
+        ## input constraint variables
+        delta = self.gmdl.addMVar(self.xs[0].shape[0], lb = -self.eps, ub = self.eps, vtype=grb.GRB.CONTINUOUS, name='uap_delta')
+        vs = [self.gmdl.addMVar(self.xs[i].shape[0], lb = self.xs[i].detach().numpy() - self.eps, ub = self.xs[i].detach().numpy() + self.eps, vtype=grb.GRB.CONTINUOUS, name=f'input_{i}') for i in range(self.batch_size)]
+        self.gurobi_var_dict[-1] = {'delta': delta, 'vs': vs, 'ds': None}
+
+        ## layer constraint variables
+        layers = self.mdl
+        for layer_idx, layer in enumerate(layers):
+            layer_type = self.get_layer_type(layer)
+            if layer_type == LayerType.Linear:
+                vs, ds = self.create_vars(layer_idx, 'linear')
+            elif layer_type == LayerType.ReLU:
+                vs, ds = self.create_vars(layer_idx, 'relu')
+            elif layer_type == LayerType.Conv2D:            
+                vs, ds = self.create_vars(layer_idx, 'conv2d')            
+            elif layer_type == LayerType.Flatten:
+                continue
+            else:
+                raise TypeError(f"Unsupported Layer Type '{layer_type}'")
+            self.gurobi_var_dict[layer_idx] = {'vs': vs, 'ds': ds}
+
+    def parallel_generate_constraints(self):
+        self.p_gen_input_constraints()
+        #conv_constrs = 0
+        #lin_constrs = 0
+        #relu_constrs = 0
+        layers = self.mdl
+        for layer_idx, layer in enumerate(layers):
+            layer_type = self.get_layer_type(layer)
+            if layer_type == LayerType.Linear:
+                self.linear_layer_idx += 1
+                #pre_num_constrs = len(self.g_constrs)
+                self.p_gen_linear_constraints(layer, layer_idx)
+                #lin_constrs+= len(self.g_constrs) - pre_num_constrs
+            elif layer_type == LayerType.ReLU:
+                #pre_num_constrs = len(self.g_constrs)
+                self.p_gen_relu_constraints(layer, layer_idx)
+                #relu_constrs+= len(self.g_constrs) - pre_num_constrs
+                if self.args is not None and self.args.all_layer_sub is True:
+                    self.linear_layer_idx += 1
+            elif layer_type == LayerType.Conv2D:
+                self.linear_layer_idx += 1    
+                #pre_num_constrs = len(self.g_constrs)
+                self.p_gen_conv2d_constraints(layer, layer_idx)
+                #conv_constrs+= len(self.g_constrs) - pre_num_constrs
+            elif layer_type == LayerType.Flatten:
+                continue
+            else:
+                raise TypeError(f"Unsupported Layer Type '{layer_type}'")
+        #print('num conv constrs', conv_constrs)
+        #print('num lin constrs', lin_constrs)
+        #print('num relu constrs', relu_constrs)
+    
+    def p_gen_input_constraints(self):
+        for i, v in enumerate(self.gurobi_var_dict[-1]['vs']):
+            self.g_constrs.append((v, self.xs[i].detach().numpy() + self.gurobi_var_dict[-1]['delta'], '='))
+
+
+    def p_gen_linear_constraints(self, layer, layer_idx):
+            weight, bias = layer.weight.detach().numpy(), layer.bias.detach().numpy()
+            vs, ds = self.gurobi_var_dict[layer_idx]['vs'], self.gurobi_var_dict[layer_idx]['ds']
+            vs1 = self.gurobi_var_dict[layer_idx-1]['vs']
+            for v_idx, v in enumerate(vs):
+                self.g_constrs.append((v, weight @ vs1[v_idx] + bias, '='))
+            if self.track_differences is True:
+                for i in range(self.batch_size):
+                    for j in range(i+1, self.batch_size):
+                        self.g_constrs.append((ds[i][j - i - 1], vs[i] - vs[j], '='))
+
+    def p_gen_relu_constraints(self, layer, layer_idx):
+        vs, ds = self.gurobi_var_dict[layer_idx]['vs'], self.gurobi_var_dict[layer_idx]['ds']
+        vs1, ds1 = self.gurobi_var_dict[layer_idx-1]['vs'], self.gurobi_var_dict[layer_idx-1]['ds']
+
+        for i in range(self.batch_size):
+            self.g_constrs.append((vs[i], 0, '>='))
+            self.g_constrs.append((vs[i], vs1[i], '>='))
+            tensor_length = self.x_lbs[i][self.linear_layer_idx].shape[0] 
+            up_scales, up_biases = np.zeros(tensor_length), self.bint * np.ones(tensor_length)
+            for j in range(tensor_length):               
+                if self.x_lbs[i][self.linear_layer_idx][j] >= 0:
+                    up_scales[j], up_biases[j] = 1, 0
+                    #self.g_constrs.append((vs[i][j], vs1[i][j], '<='))
+                    continue 
+                elif self.x_ubs[i][self.linear_layer_idx][j] <= 0:
+                    up_scales[j], up_biases[j] = 0, 0
+                    #self.g_constrs.append((vs[i][j], 0, '<='))
+                    continue
+                else:
+                    ub = self.x_ubs[i][self.linear_layer_idx][j]
+                    lb = self.x_lbs[i][self.linear_layer_idx][j]
+                    slope = ub / (ub - lb + 1e-15)
+                    mu = -slope * lb
+                    up_scales[j], up_biases[j] = slope, mu
+                    #self.g_constrs.append((vs[i][j], slope * vs1[i][j] + mu, '<='))
+            self.g_constrs.append((vs[i], up_scales * vs1[i] + up_biases, '<='))
+        
+        if self.track_differences is True:
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    self.g_constrs.append((ds[i][j - i - 1], vs[i] - vs[j], '='))
+
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    tensor_length = self.x_lbs[i][self.linear_layer_idx].shape[0]
+                    up_scale, up_bias, down_scale, down_bias = np.zeros(tensor_length), self.bint * np.ones(tensor_length), np.zeros(tensor_length), -self.bint * np.ones(tensor_length)
+                    for k in range(tensor_length):
+                        # case 1 x unsettled & y passive
+                        x_active = (self.x_lbs[i][self.linear_layer_idx][k] >= 0)
+                        x_passive = (self.x_ubs[i][self.linear_layer_idx][k] <= 0)
+                        x_unsettled = (~x_active) & (~x_passive)
+                        y_active = (self.x_lbs[j][self.linear_layer_idx][k] >= 0)
+                        y_passive = (self.x_ubs[j][self.linear_layer_idx][k] <= 0)
+                        y_unsettled = (~y_active) & (~y_passive)
+                        delta_active = (self.d_lbs[(i, j)][self.linear_layer_idx][k] >= 0)
+                        delta_passive = (self.d_ubs[(i, j)][self.linear_layer_idx][k] <= 0)
+                        delta_unsettled = (~delta_active) & (~delta_passive)                                                                                
+                        if x_unsettled and y_passive and delta_active:
+                            # up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 0, -self.bint
+                            up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 1, 0, 0, -self.bint
+                            # self.g_constrs.append((ds[i][j - i -1][k], ds1[i][j-i-1][k], '<='))
+                        elif x_unsettled and y_active:
+                            # up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 0, -self.bint
+                            up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 1, 0
+                            # self.g_constrs.append((ds[i][j - i -1][k], ds1[i][j-i-1][k], '>='))
+                        elif x_passive and y_unsettled and delta_passive:
+                            # up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 0, -self.bint
+                            up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 1, 0
+                            # self.g_constrs.append((ds[i][j - i -1][k], ds1[i][j-i-1][k], '>='))
+                        elif x_active and y_unsettled:
+                            # up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 0, -self.bint
+                            up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 1, 0, 0, -self.bint
+                            # self.g_constrs.append((ds[i][j - i -1][k], ds1[i][j-i-1][k], '<='))
+                        elif x_unsettled and y_unsettled and delta_active:
+                            # up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 0, -self.bint
+                            up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 1, 0, 0, 0
+                            # self.g_constrs.append((ds[i][j - i -1][k], ds1[i][j-i-1][k], '<='))
+                            # self.g_constrs.append((ds[i][j - i -1][k], 0, '>='))              
+                        elif x_unsettled and y_unsettled and delta_passive:
+                            # up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 0, -self.bint
+                            up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, 0, 1, 0
+                            # self.g_constrs.append((ds[i][j - i -1][k], ds1[i][j-i-1][k], '>='))
+                            # self.g_constrs.append((ds[i][j - i -1][k], 0, '<='))
+                        elif x_unsettled and y_unsettled and delta_unsettled:
+                            temp_lb = self.d_lbs[(i, j)][self.linear_layer_idx][k]
+                            temp_ub = self.d_ubs[(i, j)][self.linear_layer_idx][k]
+                            d_lambda_lb = temp_lb / (temp_lb - temp_ub + 1e-15)
+                            d_lambda_ub = temp_ub / (temp_ub - temp_lb + 1e-15)
+                            d_mu_lb = d_lambda_ub * temp_lb
+                            d_mu_ub = -d_lambda_ub * temp_lb
+                            # up_scale[k], up_bias[k], down_scale[k], down_bias[k] = 0, self.bint, 0, -self.bint
+                            up_scale[k], up_bias[k], down_scale[k], down_bias[k] = d_lambda_ub, d_mu_ub, d_lambda_lb, d_mu_lb
+                            # self.g_constrs.append((ds[i][j - i -1][k], d_lambda_lb * ds1[i][j-i-1][k] + d_mu_lb, '>='))
+                            # self.g_constrs.append((ds[i][j - i -1][k], d_lambda_ub * ds1[i][j-i-1][k] + d_mu_ub, '<=')) 
+                    self.g_constrs.append((ds[i][j - i -1], up_scale * ds1[i][j-i-1] + up_bias, '<='))
+                    self.g_constrs.append((ds[i][j - i -1], down_scale * ds1[i][j-i-1] + down_bias, '>='))
+
+
+    def p_gen_conv2d_constraints_helper(self, vars, pre_vars, num_kernel, output_h, 
+                                         output_w, bias, weight, layer, input_h, input_w):
+        out_idx = 0
+        gvars_array = [np.array(pre_var.tolist()).reshape((-1, input_h, input_w)) for pre_var in pre_vars]
+        # gvars_array = gvars_array.reshape((-1, input_h, input_w))
+        pre_lb_size = [None, None, input_h, input_w]
+        gmLinExprs = [0 * v for i, v in enumerate(vars)]
+        for out_chan_idx in range(num_kernel):
+            for out_row_idx in range(output_h):
+                for out_col_idx in range(output_w):
+                    lin_expressions = [grb.LinExpr() for i in range(len(pre_vars))]
+
+                    for in_chan_idx in range(layer.weight.shape[1]):
+
+                        # new version of conv layer for building mip by skipping kernel loops
+                        ker_row_min, ker_row_max = 0, layer.weight.shape[2]
+                        in_row_idx_min = -layer.padding[0] + layer.stride[0] * out_row_idx
+                        in_row_idx_max = -layer.padding[0] + layer.stride[0] * out_row_idx + layer.weight.shape[2] - 1
+                        if in_row_idx_min < 0: 
+                            ker_row_min = 0 - in_row_idx_min
+                        if in_row_idx_max >= pre_lb_size[2]: 
+                            ker_row_max = ker_row_max - in_row_idx_max + pre_lb_size[2] -1
+                        in_row_idx_min, in_row_idx_max = max(in_row_idx_min, 0), min(in_row_idx_max, pre_lb_size[2] - 1)
+
+                        ker_col_min, ker_col_max = 0, layer.weight.shape[3]
+                        in_col_idx_min = -layer.padding[1] + layer.stride[1] * out_col_idx
+                        in_col_idx_max = -layer.padding[1] + layer.stride[1] * out_col_idx + layer.weight.shape[3] - 1
+                        if in_col_idx_min < 0: ker_col_min = 0 - in_col_idx_min
+                        if in_col_idx_max >= pre_lb_size[3]: 
+                            ker_col_max = ker_col_max - in_col_idx_max + pre_lb_size[3] -1
+                        in_col_idx_min, in_col_idx_max = max(in_col_idx_min, 0), min(in_col_idx_max, pre_lb_size[3] - 1)
+
+                        coeffs = layer.weight[out_chan_idx, in_chan_idx, ker_row_min:ker_row_max, ker_col_min:ker_col_max].reshape(-1)
+                        for i, gvars in enumerate(gvars_array):
+                            gvar = gvars[in_chan_idx, in_row_idx_min:in_row_idx_max+1, in_col_idx_min:in_col_idx_max+1].reshape(-1)
+                            lin_expressions[i] += grb.LinExpr(coeffs, gvar)
+                    for i, var in enumerate(vars):
+                        gmLinExprs[i][out_idx] = lin_expressions[i] + bias[out_chan_idx].item()
+                        #self.g_constrs.append((var[out_idx], lin_expressions[i] + bias[out_chan_idx].item(), '='))
+                    out_idx += 1
+        for i, var in enumerate(vars):
+            self.g_constrs.append((var, gmLinExprs[i], '='))
+
+    def p_gen_conv2d_constraints(self, layer, layer_idx):
+        vs, ds = self.gurobi_var_dict[layer_idx]['vs'], self.gurobi_var_dict[layer_idx]['ds']
+        vs1, ds1 = self.gurobi_var_dict[layer_idx-1]['vs'], self.gurobi_var_dict[layer_idx-1]['ds']
+        weight = layer.weight
+        bias = layer.bias
+        assert layer.dilation == (1, 1)
+
+        # ref. https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html#torch.nn.Conv2d ###
+        k_h, k_w = layer.kernel_size
+        s_h, s_w = layer.stride
+        p_h, p_w = layer.padding
+        num_kernel = weight.shape[0]
+        input_h, input_w = self.shape[1:]
+        output_h = int((input_h + 2 * p_h - k_h) / s_h + 1)
+        output_w = int((input_w + 2 * p_w - k_w) / s_w + 1)
+
+        # Updated shape
+        self.shape = (num_kernel, output_h, output_w)
+        self.p_gen_conv2d_constraints_helper(vars=vs, pre_vars=vs1,
+                                                   num_kernel=num_kernel, output_h=output_h, output_w=output_w,
+                                                  bias=bias, weight=weight, layer=layer, input_h=input_h, input_w=input_w)
+
+        if self.track_differences is True:
+            for i in range(self.batch_size):
+                for j in range(i+1, self.batch_size):
+                    self.g_constrs.append((ds[i][j - i - 1], vs[i] - vs[j], '='))
+
+    def create_gurobi_model(self):
+        for i in range(len(self.g_constrs)):
+            lhs, rhs, sense = self.g_constrs[i]
+            if sense == '=':
+                if type(lhs) is grb.MVar:
+                    self.gmdl.addConstr(lhs == rhs)
+                else:
+                    self.gmdl.addLConstr(lhs == rhs)
+            elif sense == '>=':
+                if type(lhs) is grb.MVar:
+                    self.gmdl.addConstr(lhs >= rhs)
+                else:
+                    self.gmdl.addLConstr(lhs >= rhs)
+            elif sense == '<=':
+                if type(lhs) is grb.MVar:
+                    self.gmdl.addConstr(lhs <= rhs)
+                else:
+                    self.gmdl.addLConstr(lhs <= rhs)
+            else:
+                raise TypeError(f"Unsupported Sense Type '{sense}'")
+
+
     def add_coefs_lb_ub(self, layer_idx):
         if self.last_conv_diff_structs is None:
             raise ValueError(f'Diff sturcts is None')

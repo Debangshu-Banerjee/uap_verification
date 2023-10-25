@@ -62,7 +62,11 @@ class UAPResultList:
         layerwise_optimization_time = 0
         diff_constraint_time = 0
         diff_optimization_time = 0
-        filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}_{args.individual_prop_domain}.dat'
+        #filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}_{args.individual_prop_domain}.dat'
+        if args.dataset == Dataset.CIFAR10:
+            filename = args.output_dir + '{}_{}_{}_{:.2f}_{}.dat'.format(args.net_name, args.count_per_prop, args.count, args.eps*255, args.individual_prop_domain)
+        else:
+            filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}_{args.individual_prop_domain}.dat'
         file = open(filename, 'a+')
         for i, res in enumerate(self.result_list):
             individual_res = res.individual_res
