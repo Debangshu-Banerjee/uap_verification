@@ -6,3 +6,4 @@ class Dataset(Enum):
     MNIST = 2
     ACAS = 3
     HOUSING = 4
+    ADULT = 5
