@@ -8,10 +8,11 @@ from src.specs.relu_spec import Reluspec
 from src.util import prepare_data, get_net
 from src.common import Status
 from src.common.dataset import Dataset
-from src.network_conversion_helper import convert_model
+from src.network_conversion_helper import convert_model, is_linear
 import pandas as pd
 import numpy as np
 from torchvision.transforms import Normalize as norm
+from src.config import is_linear_model
 
 '''
 Specification holds upper bound and lower bound on ranges for each dimension.
@@ -267,7 +268,8 @@ def remove_unclassified_images(inputs, labels, dataset, net_name):
     model = get_net(net_name, dataset)
     try:
         with torch.no_grad():
-            converted_model = convert_model(model, remove_last_layer=False, all_linear=False)
+            only_net_name = net_name.split('/')[-1]
+            converted_model = convert_model(model, remove_last_layer=False, all_linear=is_linear(net_name=only_net_name))
             mean, std = get_mean_std(dataset=dataset, net_name=net_name)
             norm_transform = norm(mean, std) 
             inputs_normalised = norm_transform(inputs)
@@ -589,7 +591,7 @@ def get_patch_specs(inputs, labels, eps, dataset, p_width=2, p_length=2):
 
 def get_mean_std(dataset, net_name=''):
     if dataset == Dataset.MNIST:
-        if 'crown' in net_name:
+        if 'crown' in net_name or is_linear_model(net_name) :
             means = [0.0]
             stds = [1.0]
         else:

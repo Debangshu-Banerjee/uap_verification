@@ -99,6 +99,7 @@ class DiffDeepPoly:
             delta_ub_bias = back_prop_struct.delta_ub_bias + back_prop_struct.delta_ub_input1_coef.matmul(bias)
             delta_ub_bias = delta_ub_bias + back_prop_struct.delta_ub_input2_coef.matmul(bias)
         else:
+            print("Here")
             delta_lb_bias = back_prop_struct.delta_lb_bias
             delta_ub_bias = back_prop_struct.delta_ub_bias
         
@@ -116,6 +117,7 @@ class DiffDeepPoly:
             delta_lb_input2_coef = back_prop_struct.delta_lb_input2_coef.matmul(linear_wt)
             delta_ub_input2_coef = back_prop_struct.delta_ub_input2_coef.matmul(linear_wt)
         else:
+            print("Here")            
             delta_lb_input1_coef = None
             delta_ub_input1_coef = None
             delta_lb_input2_coef = None
@@ -171,6 +173,9 @@ class DiffDeepPoly:
             delta_lb_bias = delta_lb_bias + (delta_lb_input2_coef.sum((2, 3)) * conv_bias).sum(1)
             delta_ub_bias = back_prop_struct.delta_ub_bias + (delta_ub_input1_coef.sum((2, 3)) * conv_bias).sum(1)
             delta_ub_bias = delta_ub_bias + (delta_ub_input2_coef.sum((2, 3)) * conv_bias).sum(1)
+        else:
+            delta_lb_bias = back_prop_struct.delta_lb_bias
+            delta_ub_bias = back_prop_struct.delta_ub_bias
 
         lb_bias_input1 = back_prop_struct.lb_bias_input1 + (lb_coef_input1.sum((2, 3)) * conv_bias).sum(1)
         lb_bias_input2 = back_prop_struct.lb_bias_input2 + (lb_coef_input2.sum((2, 3)) * conv_bias).sum(1)
@@ -266,24 +271,27 @@ class DiffDeepPoly:
         neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_coef)
         # print(f"Delta coef {back_prop_struct.delta_lb_coef.shape}")
         neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_coef)
-        neg_comp_lb_input1, pos_comp_lb_input1 = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_input1_coef)
-        neg_comp_ub_input1, pos_comp_ub_input1 = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_input1_coef)
-        neg_comp_lb_input2, pos_comp_lb_input2 = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_input2_coef)
-        neg_comp_ub_input2, pos_comp_ub_input2 = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_input2_coef)
+        if back_prop_struct.delta_lb_input1_coef is not None:
+            neg_comp_lb_input1, pos_comp_lb_input1 = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_input1_coef)
+            neg_comp_ub_input1, pos_comp_ub_input1 = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_input1_coef)
+            neg_comp_lb_input2, pos_comp_lb_input2 = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_input2_coef)
+            neg_comp_ub_input2, pos_comp_ub_input2 = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_input2_coef)
 
         lb = neg_comp_lb @ delta_ub_layer + pos_comp_lb @ delta_lb_layer + back_prop_struct.delta_lb_bias
-        lb = lb + neg_comp_lb_input1 @ ub_input1_layer + pos_comp_lb_input1 @ lb_input1_layer
-        # print(f'1) lb shape {lb.shape}')
-    
-        lb = lb + neg_comp_lb_input2 @ ub_input2_layer + pos_comp_lb_input2 @ lb_input2_layer
+        if back_prop_struct.delta_lb_input1_coef is not None:
+            lb = lb + neg_comp_lb_input1 @ ub_input1_layer + pos_comp_lb_input1 @ lb_input1_layer    
+            lb = lb + neg_comp_lb_input2 @ ub_input2_layer + pos_comp_lb_input2 @ lb_input2_layer
 
         ub = neg_comp_ub @ delta_lb_layer + pos_comp_ub @ delta_ub_layer + back_prop_struct.delta_ub_bias
-        ub = ub + neg_comp_ub_input1 @ lb_input1_layer + pos_comp_ub_input1 @ ub_input1_layer
-        ub = ub + neg_comp_ub_input2 @ lb_input2_layer + pos_comp_ub_input2 @ ub_input2_layer
+        if back_prop_struct.delta_lb_input1_coef is not None:
+            ub = ub + neg_comp_ub_input1 @ lb_input1_layer + pos_comp_ub_input1 @ ub_input1_layer
+            ub = ub + neg_comp_ub_input2 @ lb_input2_layer + pos_comp_ub_input2 @ ub_input2_layer
 
         lb_new, ub_new = self.refine_diff_bounds(back_prop_struct=back_prop_struct, lb_input1_layer=lb_input1_layer,
                                                 ub_input1_layer=ub_input1_layer, lb_input2_layer=lb_input2_layer,
                                                 ub_input2_layer=ub_input2_layer, layer_idx=layer_idx)
+        self.check_lb_ub_correctness(lb=lb_new, ub=ub_new)
+        self.check_lb_ub_correctness(lb=lb, ub=ub)
         return torch.max(lb, lb_new), torch.min(ub, ub_new)
 
     # Consider cases based on the state of the relu for different propagation.
@@ -536,6 +544,16 @@ class DiffDeepPoly:
         lb, ub = torch.min(lb_input1_layer, lb_input2_layer), torch.max(ub_input1_layer, ub_input2_layer)
         sigmoid_lb, sigmoid_ub = torch.sigmoid(lb), torch.sigmoid(ub)
         lambda_lower, lambda_upper = sigmoid_lb * (1.0 - sigmoid_lb), sigmoid_ub * (1.0 - sigmoid_ub)
+        
+        input_active = (lb >= 0)
+        input_passive = (ub <= 0) 
+        input_unsettled = ~(input_active) & ~(input_passive)
+
+        deriv_min = torch.min(lambda_lower, lambda_upper)
+        deriv_max = 0.25 * torch.ones(lb_input1_layer.size(), device=self.device)
+        deriv_max = torch.where(~input_unsettled, torch.max(lambda_lower, lambda_upper), deriv_max)
+
+
 
         delta_active = (delta_lb_layer >= 0)
         delta_passive = (delta_ub_layer <= 0)
@@ -547,25 +565,29 @@ class DiffDeepPoly:
         mu_lb = torch.zeros(lb_input1_layer.size(), device=self.device)
         mu_ub = torch.zeros(lb_input1_layer.size(), device=self.device)
 
-        # case 1 delta_lb >= 0 or delta_ub <= 0
-        lambda_lb = torch.where(~delta_unsettled, lambda_lower, lambda_lb)
-        lambda_ub = torch.where(~delta_unsettled, lambda_upper, lambda_ub)
+        # case 1 delta_lb >= 0 
+        lambda_lb = torch.where(delta_active, deriv_min, lambda_lb)
+        lambda_ub = torch.where(delta_active, deriv_max, lambda_ub)
+
+        # case 2 delta_lb >= 0 
+        lambda_lb = torch.where(delta_passive, deriv_max, lambda_lb)
+        lambda_ub = torch.where(delta_passive, deriv_min, lambda_ub)
 
         # case 2 delta_lb < 0 and delta_ub > 0
         prod_lb_ub = delta_lb_layer * delta_ub_layer
         diff_lb_ub = (delta_ub_layer - delta_lb_layer + 1e-15)
-        temp_lambda_lb = (lambda_upper * delta_ub_layer - 0.25* delta_lb_layer) / diff_lb_ub
-        temp_lambda_ub = (0.25 * delta_ub_layer - lambda_lower * delta_lb_layer) / diff_lb_ub
+        temp_lambda_lb = (deriv_min * delta_ub_layer - 0.25* delta_lb_layer) / diff_lb_ub
+        temp_lambda_ub = (0.25 * delta_ub_layer - deriv_min * delta_lb_layer) / diff_lb_ub
     
-        temp_mu_lb = (0.25 - lambda_upper) * prod_lb_ub
+        temp_mu_lb = (0.25 - deriv_min) * prod_lb_ub
         temp_mu_lb = temp_mu_lb / diff_lb_ub
-        temp_mu_ub = (lambda_lower - 0.25) * prod_lb_ub
+        temp_mu_ub = (deriv_min - 0.25) * prod_lb_ub
         temp_mu_ub = temp_mu_ub / diff_lb_ub
 
-        lambda_lb = torch.where(~delta_unsettled, temp_lambda_lb, lambda_lb)
-        lambda_ub = torch.where(~delta_unsettled, temp_lambda_ub, lambda_ub)
-        mu_lb = torch.where(~delta_unsettled, temp_mu_lb, mu_lb)
-        mu_ub = torch.where(~delta_unsettled, temp_mu_ub, mu_ub)
+        lambda_lb = torch.where(delta_unsettled, temp_lambda_lb, lambda_lb)
+        lambda_ub = torch.where(delta_unsettled, temp_lambda_ub, lambda_ub)
+        mu_lb = torch.where(delta_unsettled, temp_mu_lb, mu_lb)
+        mu_ub = torch.where(delta_unsettled, temp_mu_ub, mu_ub)
 
         neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_coef)
         neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_coef)
@@ -621,17 +643,27 @@ class DiffDeepPoly:
                                            lb_coef=back_prop_struct.lb_coef_input1,
                                            ub_bias=back_prop_struct.ub_bias_input1,
                                            ub_coef=back_prop_struct.ub_coef_input1)
-        poly_struct1 = self.analyze_sigmoid(poly_struct=poly_struct1, lb_layer=lb_input1_layer, ub_layer=ub_input1_layer)
+        poly_struct1 = self.analyze_tanh(poly_struct=poly_struct1, lb_layer=lb_input1_layer, ub_layer=ub_input1_layer)
 
         poly_struct2 = BasicDeepPolyStruct(lb_bias=back_prop_struct.lb_bias_input2, 
                                            lb_coef=back_prop_struct.lb_coef_input2,
                                            ub_bias=back_prop_struct.ub_bias_input2,
                                            ub_coef=back_prop_struct.ub_coef_input2)
-        poly_struct2 = self.analyze_sigmoid(poly_struct=poly_struct2, lb_layer=lb_input2_layer, ub_layer=ub_input2_layer)
+        poly_struct2 = self.analyze_tanh(poly_struct=poly_struct2, lb_layer=lb_input2_layer, ub_layer=ub_input2_layer)
 
         lb, ub = torch.min(lb_input1_layer, lb_input2_layer), torch.max(ub_input1_layer, ub_input2_layer)
         tanh_lb, tanh_ub = torch.tanh(lb), torch.tanh(ub)
         lambda_lower, lambda_upper = 1.0 - (tanh_lb * tanh_lb), 1.0 - (tanh_ub * tanh_ub)
+
+        input_active = (lb >= 0)
+        input_passive = (ub <= 0) 
+        input_unsettled = ~(input_active) & ~(input_passive)
+
+        deriv_min = torch.min(lambda_lower, lambda_upper)
+        deriv_max = torch.ones(lb_input1_layer.size(), device=self.device)
+        deriv_max = torch.where(~input_unsettled, torch.max(lambda_lower, lambda_upper), deriv_max)
+
+
 
         delta_active = (delta_lb_layer >= 0)
         delta_passive = (delta_ub_layer <= 0)
@@ -643,25 +675,29 @@ class DiffDeepPoly:
         mu_lb = torch.zeros(lb_input1_layer.size(), device=self.device)
         mu_ub = torch.zeros(lb_input1_layer.size(), device=self.device)
 
-        # case 1 lb >= 0 or ub <= 0
-        lambda_lb = torch.where(~delta_unsettled, lambda_lower, lambda_lb)
-        lambda_ub = torch.where(~delta_unsettled, lambda_upper, lambda_ub)
+        # case 1 delta_lb >= 0 
+        lambda_lb = torch.where(delta_active, deriv_min, lambda_lb)
+        lambda_ub = torch.where(delta_active, deriv_max, lambda_ub)
+
+        # case 2 delta_lb >= 0 
+        lambda_lb = torch.where(delta_passive, deriv_max, lambda_lb)
+        lambda_ub = torch.where(delta_passive, deriv_min, lambda_ub)
 
         # case 2 delta_lb < 0 and delta_ub > 0
         prod_lb_ub = delta_lb_layer * delta_ub_layer
         diff_lb_ub = (delta_ub_layer - delta_lb_layer + 1e-15)
-        temp_lambda_lb = (lambda_upper * delta_ub_layer - delta_lb_layer) / diff_lb_ub
-        temp_lambda_ub = (delta_ub_layer - lambda_lower * delta_lb_layer) / diff_lb_ub
+        temp_lambda_lb = (deriv_min * delta_ub_layer - delta_lb_layer) / diff_lb_ub
+        temp_lambda_ub = (delta_ub_layer - deriv_min * delta_lb_layer) / diff_lb_ub
     
-        temp_mu_lb = (1.0 - lambda_upper) * prod_lb_ub
+        temp_mu_lb = (1.0 - deriv_min) * prod_lb_ub
         temp_mu_lb = temp_mu_lb / diff_lb_ub
-        temp_mu_ub = (lambda_lower - 1.0) * prod_lb_ub
+        temp_mu_ub = (deriv_min - 1.0) * prod_lb_ub
         temp_mu_ub = temp_mu_ub / diff_lb_ub
 
-        lambda_lb = torch.where(~delta_unsettled, temp_lambda_lb, lambda_lb)
-        lambda_ub = torch.where(~delta_unsettled, temp_lambda_ub, lambda_ub)
-        mu_lb = torch.where(~delta_unsettled, temp_mu_lb, mu_lb)
-        mu_ub = torch.where(~delta_unsettled, temp_mu_ub, mu_ub)
+        lambda_lb = torch.where(delta_unsettled, temp_lambda_lb, lambda_lb)
+        lambda_ub = torch.where(delta_unsettled, temp_lambda_ub, lambda_ub)
+        mu_lb = torch.where(delta_unsettled, temp_mu_lb, mu_lb)
+        mu_ub = torch.where(delta_unsettled, temp_mu_ub, mu_ub)
 
         neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(back_prop_struct.delta_lb_coef)
         neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(back_prop_struct.delta_ub_coef)
@@ -700,7 +736,7 @@ class DiffDeepPoly:
         if not torch.all(lb <= ub + 1e-6) :
             self.log_file.write(f'lb {lb}\n\n')
             self.log_file.write(f'ub {ub}\n\n')
-            print(f"Issue {lb  - ub }\n\n")
+            print(f"Issue {torch.max(lb  - ub)}\n\n")
             self.log_file.write(f"Issue {lb  - ub }\n\n")
             assert torch.all(lb <= ub + 1e-6)
 
@@ -757,6 +793,15 @@ class DiffDeepPoly:
                                             delta_ub_layer=delta_ubs[layer_idx])
         elif layer.type is LayerType.Sigmoid:
             back_prop_struct = self.handle_sigmoid(
+                                            back_prop_struct=prop_struct,
+                                            lb_input1_layer=self.lb_input1[layer_idx], 
+                                            ub_input1_layer=self.ub_input1[layer_idx], 
+                                            lb_input2_layer=self.lb_input2[layer_idx], 
+                                            ub_input2_layer=self.ub_input2[layer_idx],
+                                            delta_lb_layer=delta_lbs[layer_idx], 
+                                            delta_ub_layer=delta_ubs[layer_idx])
+        elif layer.type is LayerType.TanH:
+            back_prop_struct = self.handle_tanh(
                                             back_prop_struct=prop_struct,
                                             lb_input1_layer=self.lb_input1[layer_idx], 
                                             ub_input1_layer=self.ub_input1[layer_idx], 
@@ -850,8 +895,9 @@ class DiffDeepPoly:
             self.log_file.write(f'curr_diff_delta_lb {linear_layer_index} {brute_delta_lb}\n\n')
             self.log_file.write(f"curr_delta_ub {linear_layer_index} {curr_delta_ub}\n\n")            
             self.log_file.write(f'curr_diff_delta_ub {linear_layer_index} {brute_delta_ub}\n\n')
-            self.log_file.write(f"lb ration {linear_layer_index} {torch.div(brute_delta_lb, curr_delta_lb + 1e-5)}\n\n")            
-            self.log_file.write(f'ub ration {linear_layer_index} {torch.div(brute_delta_ub, curr_delta_ub + 1e-5)}\n\n')
+            self.log_file.write(f"ration {linear_layer_index} {torch.div(brute_delta_ub - brute_delta_lb, curr_delta_ub - curr_delta_lb + 1e-5)}\n\n")            
+            self.log_file.write(f"lb input1 {self.lb_input1[linear_layer_index]}\n\n")
+            self.log_file.write(f"ub input1 {self.ub_input1[linear_layer_index]}\n\n")
             curr_delta_lb = torch.max(brute_delta_lb, curr_delta_lb)
             curr_delta_ub = torch.min(brute_delta_ub, curr_delta_ub)
             delta_lbs.append(curr_delta_lb)
@@ -936,20 +982,22 @@ class DiffDeepPoly:
 
                 self.ub_input1[layer_idx] = torch.min(self.ub_input1[layer_idx], torch.sigmoid(self.ub_input1[layer_idx-1]))
                 self.ub_input2[layer_idx] = torch.min(self.ub_input2[layer_idx], torch.sigmoid(self.ub_input2[layer_idx-1]))
-
+            
+            self.log_file.write(f'\n\n*** HANDLING {layer.type} ***\n\n')
             curr_delta_lb, curr_delta_ub = self.back_substitution_full(layer_idx=layer_idx, delta_lbs=delta_lbs,
                                                                        delta_ubs=delta_ubs)
         
         # Code for full back substitution.
             brute_delta_lb = self.lb_input1[layer_idx] - self.ub_input2[layer_idx]
             brute_delta_ub = self.ub_input1[layer_idx] - self.lb_input2[layer_idx]
-
             self.log_file.write(f"curr_delta_lb {layer_idx} {curr_delta_lb}\n\n")            
             self.log_file.write(f'curr_diff_delta_lb {layer_idx} {brute_delta_lb}\n\n')
             self.log_file.write(f"curr_delta_ub {layer_idx} {curr_delta_ub}\n\n")            
             self.log_file.write(f'curr_diff_delta_ub {layer_idx} {brute_delta_ub}\n\n')
-            self.log_file.write(f"lb ration {layer_idx} {torch.div(brute_delta_lb, curr_delta_lb + 1e-5)}\n\n")            
-            self.log_file.write(f'ub ration {layer_idx} {torch.div(brute_delta_ub, curr_delta_ub + 1e-5)}\n\n')
+            self.log_file.write(f"ration {layer_idx} {torch.div(brute_delta_ub - brute_delta_lb, curr_delta_ub - curr_delta_lb + 1e-5)}\n\n")            
+            self.log_file.write(f"lb input1 {self.lb_input1[layer_idx]}\n\n")
+            self.log_file.write(f"ub input1 {self.ub_input1[layer_idx]}\n\n")
+
             
             curr_delta_lb = torch.max(brute_delta_lb, curr_delta_lb)
             curr_delta_ub = torch.min(brute_delta_ub, curr_delta_ub)
