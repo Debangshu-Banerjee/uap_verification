@@ -94,7 +94,6 @@ class UapDiff:
 
     def run(self, proportion=False, targeted = False, monotone = False, monotonic_inv = False, diff = True) -> UAPSingleRes:
         start_time = time.time()
-        self.compute_difference_dict(monotone = monotone)
         if self.no_lp_for_verified == True and not targeted and not monotone:
             self.prune_verified_props()
         # Do not invoke diffPoly if the diff constraints is disabled.
