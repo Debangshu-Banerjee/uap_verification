@@ -1,0 +1,18 @@
+
+
+
+Eps : 0.15000000000000005
+Individual verified: 2
+Baseline verified: 2.0
+Uap no diff verified 13.0
+Uap verified: 40.0
+Extra verified: 38.0
+Extra diff verified 27.0
+Avg. times [0.3645922660827637, 0.4621253252029419, 9.20422283411026, 38.050405371189115]
+
+
+
+No diff constraint time 1.9775387287139892
+No diff optimization time 6.826555931568146
+With diff constraint time 2.649367022514343
+With diff optimization time 27.09721130132675
