@@ -90,7 +90,7 @@ def UapMonotonicityBackend(props, uap_verification_args):
     input_per_prop = uap_verification_args.count_per_prop * 2
     uap_result_list = UAPResultList()
     for i in range(uap_prop_count):
-        print("\n\n ***** verifying property ***** \n\n")
+        print(f"\n\n ***** verifying property {i} ***** \n\n")
         props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop]
         uap_analyzer = UAPAnalyzerBackendWrapper(props=props_to_analyze, args=uap_verification_args)
         # run the uap verification
@@ -104,7 +104,7 @@ def UapTargetedBackend(props, uap_verification_args):
     input_per_prop = uap_verification_args.count_per_prop
     uap_result_list = UAPResultList()
     for i in range(uap_prop_count):
-        print("\n\n ***** verifying property ***** \n\n")
+        print(f"\n\n ***** verifying property {i} ***** \n\n")
         props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop]
         uap_analyzer = UAPAnalyzerBackendWrapper(props=props_to_analyze, args=uap_verification_args)
         # run the uap verification
@@ -130,7 +130,7 @@ def UapVerificationBackend(props, uap_verification_args):
     input_per_prop = uap_verification_args.count_per_prop
     uap_result_list = UAPResultList()
     for i in range(uap_prop_count):
-        print("\n\n ***** verifying property ***** \n\n")
+        print(f"\n\n ***** verifying property {i} ***** \n\n")
         props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop] 
         # new_prop = deepcopy(props[0])
         # new_prop.update_input(eps=0.1)       

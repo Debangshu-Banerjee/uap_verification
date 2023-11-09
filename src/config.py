@@ -90,6 +90,7 @@ CIFAR_STANDARD_CONV = "convSmallRELU__Point.onnx"
 
 # CIFAR crown-ibp Network
 CIFAR_CROWN_IBP = "cifar_cnn_2layer_width_2_best.pth"
+CIFAR_CROWN_IBP_MEDIUM = "crown_cifar_cnn_3layer_fixed_kernel_3_width_1_best.pth"
 
 # CIFAR Networks
 CIFAR_CONV_2_255 = "cifar10_2_255.onnx"  # 49402 neurons

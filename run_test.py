@@ -8,7 +8,7 @@ import src.uap_analyzer as analyzer
 import src.uap_analyzer as uap_ver
 from threading import Thread
 import sys
-
+import requests
 
 
 # nets = [config.MNIST_CONV_MED, config.MNIST_CONV_SMALL, config.MNIST_LINEAR_50, config.MNIST_LINEAR_100, config.MNIST_FFN_PGD, config.MNIST_FFN_DIFFAI]
@@ -60,19 +60,38 @@ import sys
 #     uap_ver.UapVerification(uap_verfication_args)
 #     eps += 0.05
 
-eps = 4.0
-for _ in range(8):
-    uap_verfication_args = uap_ver.UapAnalysisArgs(
-        individual_prop_domain=Domain.DEEPZ,
-        domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.CIFAR10, sink_label=None,
-        spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=eps/255, net=config.CIFAR_CROWN_IBP,                                                                                                              
-        timeout=100, output_dir='par_results/', radius_l=0.002, radius_r=0.25, 
-        uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
-        no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=3,
-        try_image_smoothing=False, filter_threshold=None)
-    uap_ver.UapVerification(uap_verfication_args)
-    eps += 0.5
-    quit()
+# nets = [config.CIFAR_CROWN_IBP_MEDIUM]
+# for net in nets:
+#     eps = 2.0
+#     for _ in range(13):
+#         uap_verfication_args = uap_ver.UapAnalysisArgs(
+#             individual_prop_domain=Domain.DEEPZ,
+#             domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.CIFAR10, sink_label=None,
+#             spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=eps/255, net=net,                                                                                                              
+#             timeout=100, output_dir='cifar_results/', radius_l=0.002, radius_r=0.25, 
+#             uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+#             no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=3,
+#             try_image_smoothing=False, filter_threshold=None)
+#         uap_ver.UapVerification(uap_verfication_args)
+#         eps += 0.5
+
+nets = [config.MNIST_CONV_BIG]
+epsilons = [0.23, 0.24, 0.25, 0.22]
+for net in nets:
+   eps = 0.23
+   for eps in epsilons:
+       uap_verfication_args = uap_ver.UapAnalysisArgs(
+           individual_prop_domain=Domain.DEEPZ,
+           domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.MNIST, sink_label=None,
+           spec_type=InputSpecType.UAP, count=20, count_per_prop=5, eps=eps, net=net,                                                                                                              
+           timeout=100, output_dir='mnist_results_new/', radius_l=0.002, radius_r=0.25, 
+           uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+           no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=2,
+           try_image_smoothing=False, filter_threshold=None)
+       uap_ver.UapVerification(uap_verfication_args)
+       requests.post('https://ntfy.cmxu.io/test', data = f'Finished {eps}'.encode(encoding='utf-8'))
+       #eps += 0.01
+
 
 # eps = 4.0
 # for _ in range(8):
