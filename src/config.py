@@ -73,13 +73,14 @@ MNIST_FFN_PGD = "mnistconvSmallRELU__PGDK.onnx"
 MNIST_CONV_SMALL_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
 MNIST_FFN_DIFFAI = "mnistconvSmallRELUDiffAI.onnx"
 MNIST_CONV_MED = 'mnistconvMedGRELU__Point.onnx'
-MNIST_CONV_BIG = 'mnistconvBigRELU__DiffAI.onnx'
+MNIST_CONV_BIG = 'mnist_convBigRELU__DiffAI.onnx'
 MNIST_CONV_SIGMOID = 'convMedGSIGMOID__PGDK_w_0.3.onnx'
 MNIST_CONV_TANH = "convMedGTANH__PGDK_w_0.3.onnx"
 MNIST_FFN_SIGMOID = "ffnnSIGMOID__PGDK_w_0.3_6_500.onnx"
 
 # MNIST crown-ibp network
 MNIST_CROWN_IBP = "mnist_cnn_2layer_width_1_best.pth"
+MNIST_CROWN_IBP_MED = "mnist_cnn_3layer_fixed_kernel_3_width_1_best.pth"
 MNIST_CROWN_IBP_MODIFIED = "mnist_cnn_2layer_width_1_best_modified.pth"
 
 # CIFAR Common Network
@@ -97,7 +98,6 @@ CIFAR_CONV_8_255 = "cifar10_8_255.onnx"  # 16634 neurons
 CIFAR_CONV_SMALL = "convSmall_pgd_cifar.onnx"   # 3,604 neurons
 CIFAR_CONV_COLT = "cifar10_8_255_colt.onnx"
 CIFAR_CONV_DIFFAI = "cifar10convSmallRELUDiffAI.onnx"
-CIFAR_CONV_BIG = "convBigRELU__DiffAI_cifar.onnx"  # 62,464 neurons
 
 # OVAL21 CIFAR
 CIFAR_OVAL_BASE = "oval21/cifar_base_kw.onnx"   # 3172 neurons
@@ -108,6 +108,8 @@ CIFAR_CONV_SMALL = "convSmallRELU__Point.onnx"   # 3,604 neurons
 CIFAR_CONV_SMALL_PGD = "cifarconvSmallRELU__PGDK.onnx"   # 3,604 neurons
 CIFAR_CONV_SMALL_DIFFAI = "cifar10convSmallRELUDiffAI.onnx"   # 3,604 neurons
 CIFAR_CONV_MED = "cifarconvmedRELU__Point.onnx"   # 3,604 neurons
+CIFAR_CONV_BIG = "cifar_convBigRELU__DiffAI.onnx"
+
 
 HOUSING_RM_CRIM = 'monotonic.onnx'
 HOUSING_2LAYER = 'monotonic_2layer.onnx'
