@@ -313,9 +313,12 @@ class DiffDeepPoly:
             ub = ub + neg_comp_ub_input1 @ lb_input1_layer + pos_comp_ub_input1 @ ub_input1_layer
             ub = ub + neg_comp_ub_input2 @ lb_input2_layer + pos_comp_ub_input2 @ ub_input2_layer
 
-        lb_new, ub_new = self.refine_diff_bounds(back_prop_struct=back_prop_struct, lb_input1_layer=lb_input1_layer,
-                                                ub_input1_layer=ub_input1_layer, lb_input2_layer=lb_input2_layer,
-                                                ub_input2_layer=ub_input2_layer, layer_idx=layer_idx)
+        if back_prop_struct.lb_coef_input1 is not None:
+            lb_new, ub_new = self.refine_diff_bounds(back_prop_struct=back_prop_struct, lb_input1_layer=lb_input1_layer,
+                                                    ub_input1_layer=ub_input1_layer, lb_input2_layer=lb_input2_layer,
+                                                    ub_input2_layer=ub_input2_layer, layer_idx=layer_idx)
+        else:
+            lb_new, ub_new = lb, ub
         self.check_lb_ub_correctness(lb=lb_new, ub=ub_new)
         self.check_lb_ub_correctness(lb=lb, ub=ub)
         return torch.max(lb, lb_new), torch.min(ub, ub_new)
@@ -1053,6 +1056,8 @@ class DiffDeepPoly:
             curr_delta_ub = torch.min(brute_delta_ub, curr_delta_ub)
             delta_lbs.append(curr_delta_lb)
             delta_ubs.append(curr_delta_ub)
+            if self.lightweight_diffpoly is True:
+                break
         self.log_file.close()
 
         return delta_lbs, delta_ubs

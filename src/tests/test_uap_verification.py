@@ -14,11 +14,11 @@ class TestBasicUap(TestCase):
         uap_verfication_args = uap_ver.UapAnalysisArgs(
             individual_prop_domain=Domain.DEEPZ,
             domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.MNIST, sink_label=None,
-            spec_type=InputSpecType.UAP, count=2, count_per_prop=5, eps=0.23, net=config.MNIST_CONV_BIG,                                                                                                              
+            spec_type=InputSpecType.UAP, count=2, count_per_prop=5, eps=0.15, net=config.MNIST_CONV_BIG,                                                                                                              
             timeout=100, output_dir='results_trial/', radius_l=0.002, radius_r=0.25,
             uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=False,
             no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=2,
-            try_image_smoothing=False, filter_threshold=-5.0, fold_conv_layers=False, ligweight_diffpoly=True)
+            try_image_smoothing=False, filter_threshold=None, fold_conv_layers=False, ligweight_diffpoly=True)
         uap_ver.UapVerification(uap_verfication_args)
 
     def test_mnist_uap_full(self):
