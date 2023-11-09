@@ -718,7 +718,7 @@ class UAPLPtransformer:
                                      name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
             if self.track_differences is True:
                 if self.args is not None and self.args.all_layer_sub is True:
-                    if self.batch_size > 0 and layer_idx < len(self.d_lbs[(0, 1)]):
+                    if self.batch_size > 1 and layer_idx < len(self.d_lbs[(0, 1)]):
                         ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][layer_idx].shape[0], lb=self.d_lbs[(i, j)][layer_idx] -self.tolerence,
                                 ub=self.d_ubs[(i, j)][layer_idx] + self.tolerence,
                                 vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] 
