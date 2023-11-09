@@ -1,5 +1,6 @@
 from src.common import Status
 import torch
+from src.common.dataset import Dataset
 
 class LP_TIMINGS:
     def __init__(self, total_time, constraint_formulation_time, optimization_time):

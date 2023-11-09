@@ -42,7 +42,8 @@ class UapDiff:
                                 lb_input1=input1_lbs, ub_input1=input1_ubs,
                                 lb_input2=input2_lbs, ub_input2=input2_ubs, device='cpu', 
                                 noise_ind = self.noise_ind, eps = self.eps, 
-                                monotone = monotone, use_all_layers=self.args.all_layer_sub)
+                                monotone = monotone, use_all_layers=self.args.all_layer_sub, 
+                                lightweight_diffpoly=self.args.lightweight_diffpoly)
                     delta_lbs, delta_ubs = diff_poly_ver.run()
                 self.difference_lbs_dict[(i, j)] = delta_lbs
                 self.difference_ubs_dict[(i, j)] = delta_ubs

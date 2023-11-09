@@ -62,7 +62,7 @@ class DiffPropStruct:
 class DiffDeepPoly:
     def __init__(self, input1, input2, net, lb_input1, ub_input1,
                 lb_input2, ub_input2, device='', noise_ind = None,
-                eps = None, monotone = False, use_all_layers=False) -> None:
+                eps = None, monotone = False, use_all_layers=False, lightweight_diffpoly=False) -> None:
         self.input1 = input1
         self.input2 = input2
         if self.input1.shape[0] == 784:
@@ -90,6 +90,7 @@ class DiffDeepPoly:
         self.eps = eps
         self.monotone = monotone
         self.use_all_layers = use_all_layers
+        self.lightweight_diffpoly = lightweight_diffpoly
 
     # Bias cancels out (Ax + b - Ay - b) = A(x - y) = A * delta 
     def handle_linear(self, linear_wt, bias, back_prop_struct):
@@ -99,16 +100,22 @@ class DiffDeepPoly:
             delta_ub_bias = back_prop_struct.delta_ub_bias + back_prop_struct.delta_ub_input1_coef.matmul(bias)
             delta_ub_bias = delta_ub_bias + back_prop_struct.delta_ub_input2_coef.matmul(bias)
         else:
-            print("Here")
             delta_lb_bias = back_prop_struct.delta_lb_bias
             delta_ub_bias = back_prop_struct.delta_ub_bias
-        
-        lb_bias_input1 = back_prop_struct.lb_bias_input1 + back_prop_struct.lb_coef_input1.matmul(bias)
-        lb_bias_input2 = back_prop_struct.lb_bias_input2 + back_prop_struct.lb_coef_input2.matmul(bias)
-        ub_bias_input1 = back_prop_struct.ub_bias_input1 + back_prop_struct.ub_coef_input1.matmul(bias)
-        ub_bias_input2 = back_prop_struct.ub_bias_input2 + back_prop_struct.ub_coef_input2.matmul(bias)
 
-        
+        if back_prop_struct.lb_coef_input1 is not None:       
+            lb_bias_input1 = back_prop_struct.lb_bias_input1 + back_prop_struct.lb_coef_input1.matmul(bias)
+            lb_bias_input2 = back_prop_struct.lb_bias_input2 + back_prop_struct.lb_coef_input2.matmul(bias)
+            ub_bias_input1 = back_prop_struct.ub_bias_input1 + back_prop_struct.ub_coef_input1.matmul(bias)
+            ub_bias_input2 = back_prop_struct.ub_bias_input2 + back_prop_struct.ub_coef_input2.matmul(bias)
+        else:
+            lb_bias_input1 = None
+            lb_bias_input2 = None
+            ub_bias_input1 = None
+            ub_bias_input2 = None
+
+
+
         delta_lb_coef = back_prop_struct.delta_lb_coef.matmul(linear_wt)
         delta_ub_coef = back_prop_struct.delta_ub_coef.matmul(linear_wt)
         if back_prop_struct.delta_lb_input1_coef is not None:
@@ -116,17 +123,21 @@ class DiffDeepPoly:
             delta_ub_input1_coef = back_prop_struct.delta_ub_input1_coef.matmul(linear_wt)
             delta_lb_input2_coef = back_prop_struct.delta_lb_input2_coef.matmul(linear_wt)
             delta_ub_input2_coef = back_prop_struct.delta_ub_input2_coef.matmul(linear_wt)
-        else:
-            print("Here")            
+        else:            
             delta_lb_input1_coef = None
             delta_ub_input1_coef = None
             delta_lb_input2_coef = None
             delta_ub_input2_coef = None
-
-        lb_coef_input1 = back_prop_struct.lb_coef_input1.matmul(linear_wt)
-        lb_coef_input2 = back_prop_struct.lb_coef_input2.matmul(linear_wt)
-        ub_coef_input1 = back_prop_struct.ub_coef_input1.matmul(linear_wt)
-        ub_coef_input2 = back_prop_struct.ub_coef_input2.matmul(linear_wt)
+        if back_prop_struct.lb_coef_input1 is not None:
+            lb_coef_input1 = back_prop_struct.lb_coef_input1.matmul(linear_wt)
+            lb_coef_input2 = back_prop_struct.lb_coef_input2.matmul(linear_wt)
+            ub_coef_input1 = back_prop_struct.ub_coef_input1.matmul(linear_wt)
+            ub_coef_input2 = back_prop_struct.ub_coef_input2.matmul(linear_wt)
+        else:
+            lb_coef_input1 = None
+            lb_coef_input2 = None
+            ub_coef_input1 = None
+            ub_coef_input2 = None
 
         back_prop_struct.populate(delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias, 
                                     delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias,
@@ -161,10 +172,11 @@ class DiffDeepPoly:
             delta_lb_input2_coef = back_prop_struct.delta_lb_input2_coef.view((coef_shape[0], *postconv_shape))
             delta_ub_input2_coef = back_prop_struct.delta_ub_input2_coef.view((coef_shape[0], *postconv_shape))                        
 
-        lb_coef_input1 = back_prop_struct.lb_coef_input1.view((coef_shape[0], *postconv_shape))
-        lb_coef_input2 = back_prop_struct.lb_coef_input2.view((coef_shape[0], *postconv_shape))
-        ub_coef_input1 = back_prop_struct.ub_coef_input1.view((coef_shape[0], *postconv_shape))
-        ub_coef_input2 = back_prop_struct.ub_coef_input2.view((coef_shape[0], *postconv_shape))
+        if back_prop_struct.lb_coef_input1 is not None:
+            lb_coef_input1 = back_prop_struct.lb_coef_input1.view((coef_shape[0], *postconv_shape))
+            lb_coef_input2 = back_prop_struct.lb_coef_input2.view((coef_shape[0], *postconv_shape))
+            ub_coef_input1 = back_prop_struct.ub_coef_input1.view((coef_shape[0], *postconv_shape))
+            ub_coef_input2 = back_prop_struct.ub_coef_input2.view((coef_shape[0], *postconv_shape))        
         
         # delta_lb_bias = back_prop_struct.delta_lb_bias + (0 if conv_bias is None else (delta_lb_coef.sum((2, 3)) * conv_bias).sum(1))
         # delta_ub_bias = back_prop_struct.delta_ub_bias + (0 if conv_bias is None else (delta_ub_coef.sum((2, 3)) * conv_bias).sum(1))
@@ -177,10 +189,11 @@ class DiffDeepPoly:
             delta_lb_bias = back_prop_struct.delta_lb_bias
             delta_ub_bias = back_prop_struct.delta_ub_bias
 
-        lb_bias_input1 = back_prop_struct.lb_bias_input1 + (lb_coef_input1.sum((2, 3)) * conv_bias).sum(1)
-        lb_bias_input2 = back_prop_struct.lb_bias_input2 + (lb_coef_input2.sum((2, 3)) * conv_bias).sum(1)
-        ub_bias_input1 = back_prop_struct.ub_bias_input1 + (ub_coef_input1.sum((2, 3)) * conv_bias).sum(1)
-        ub_bias_input2 = back_prop_struct.ub_bias_input2 + (ub_coef_input2.sum((2, 3)) * conv_bias).sum(1)
+        if back_prop_struct.lb_coef_input1 is not None:
+            lb_bias_input1 = back_prop_struct.lb_bias_input1 + (lb_coef_input1.sum((2, 3)) * conv_bias).sum(1)
+            lb_bias_input2 = back_prop_struct.lb_bias_input2 + (lb_coef_input2.sum((2, 3)) * conv_bias).sum(1)
+            ub_bias_input1 = back_prop_struct.ub_bias_input1 + (ub_coef_input1.sum((2, 3)) * conv_bias).sum(1)
+            ub_bias_input2 = back_prop_struct.ub_bias_input2 + (ub_coef_input2.sum((2, 3)) * conv_bias).sum(1)
 
 
 
@@ -202,14 +215,15 @@ class DiffDeepPoly:
             new_delta_ub_input1_coef = None
             new_delta_lb_input2_coef = None
             new_delta_ub_input2_coef = None
-            
-        lb_coef_input1 = F.conv_transpose2d(lb_coef_input1, conv_weight, None, stride, padding,
-                                    output_padding, groups, dilation)
-        lb_coef_input2 = F.conv_transpose2d(lb_coef_input2, conv_weight, None, stride, padding,
-                                    output_padding, groups, dilation)
-        ub_coef_input1 = F.conv_transpose2d(ub_coef_input1, conv_weight, None, stride, padding,
-                                    output_padding, groups, dilation)
-        ub_coef_input2 = F.conv_transpose2d(ub_coef_input2, conv_weight, None, stride, padding,
+
+        if back_prop_struct.lb_coef_input1 is not None:        
+            lb_coef_input1 = F.conv_transpose2d(lb_coef_input1, conv_weight, None, stride, padding,
+                                        output_padding, groups, dilation)
+            lb_coef_input2 = F.conv_transpose2d(lb_coef_input2, conv_weight, None, stride, padding,
+                                        output_padding, groups, dilation)
+            ub_coef_input1 = F.conv_transpose2d(ub_coef_input1, conv_weight, None, stride, padding,
+                                        output_padding, groups, dilation)
+            ub_coef_input2 = F.conv_transpose2d(ub_coef_input2, conv_weight, None, stride, padding,
                                     output_padding, groups, dilation)
 
 
@@ -222,11 +236,23 @@ class DiffDeepPoly:
             new_delta_ub_input1_coef = new_delta_ub_input1_coef.view((coef_shape[0], -1))
             new_delta_lb_input2_coef = new_delta_lb_input2_coef.view((coef_shape[0], -1))
             new_delta_ub_input2_coef = new_delta_ub_input2_coef.view((coef_shape[0], -1))
+        
+        if back_prop_struct.lb_coef_input1 is not None:
+            lb_coef_input1 = lb_coef_input1.view((coef_shape[0], -1))
+            lb_coef_input2 = lb_coef_input2.view((coef_shape[0], -1))
+            ub_coef_input1 = ub_coef_input1.view((coef_shape[0], -1))
+            ub_coef_input2 = ub_coef_input2.view((coef_shape[0], -1))
+        else:
+            lb_coef_input1 = None
+            lb_coef_input2 = None
+            ub_coef_input1 = None
+            ub_coef_input2 = None
+            lb_bias_input1 = None
+            lb_bias_input2 = None
+            ub_bias_input1 = None
+            ub_bias_input2 = None
 
-        lb_coef_input1 = lb_coef_input1.view((coef_shape[0], -1))
-        lb_coef_input2 = lb_coef_input2.view((coef_shape[0], -1))
-        ub_coef_input1 = ub_coef_input1.view((coef_shape[0], -1))
-        ub_coef_input2 = ub_coef_input2.view((coef_shape[0], -1))
+
 
         back_prop_struct.populate(delta_lb_coef=new_delta_lb_coef, delta_lb_bias=delta_lb_bias, 
                             delta_ub_coef=new_delta_ub_coef, delta_ub_bias=delta_ub_bias,
@@ -480,15 +506,27 @@ class DiffDeepPoly:
         delta_ub_bias = pos_comp_ub @ mu_ub + neg_comp_ub @ mu_lb + back_prop_struct.delta_ub_bias
         delta_ub_bias = delta_ub_bias + pos_comp_ub_input1 @ mu_ub_input1_prop + pos_comp_ub_input2 @ mu_ub_input2_prop
 
-        lb_bias_input1 = back_prop_struct.lb_bias_input1 + neg_coef_lb_input1 @ mu_ub_input1_prop
-        ub_bias_input1 = back_prop_struct.ub_bias_input1 + pos_coef_ub_input1 @ mu_ub_input1_prop
-        lb_bias_input2 = back_prop_struct.lb_bias_input2 + neg_coef_lb_input2 @ mu_ub_input2_prop
-        ub_bias_input2 = back_prop_struct.ub_bias_input2 + pos_coef_ub_input2 @ mu_ub_input2_prop
+        if back_prop_struct.lb_bias_input1 is not None:
+            lb_bias_input1 = back_prop_struct.lb_bias_input1 + neg_coef_lb_input1 @ mu_ub_input1_prop
+            ub_bias_input1 = back_prop_struct.ub_bias_input1 + pos_coef_ub_input1 @ mu_ub_input1_prop
+            lb_bias_input2 = back_prop_struct.lb_bias_input2 + neg_coef_lb_input2 @ mu_ub_input2_prop
+            ub_bias_input2 = back_prop_struct.ub_bias_input2 + pos_coef_ub_input2 @ mu_ub_input2_prop
 
-        lb_coef_input1 = neg_coef_lb_input1 * lambda_ub_input1_prop + pos_coef_lb_input1 * lambda_lb_input1_prop
-        ub_coef_input1 = neg_coef_ub_input1 * lambda_lb_input1_prop + pos_coef_ub_input1 * lambda_ub_input1_prop
-        lb_coef_input2 = neg_coef_lb_input2 * lambda_ub_input2_prop + pos_coef_lb_input2 * lambda_lb_input2_prop
-        ub_coef_input2 = neg_coef_ub_input2 * lambda_lb_input2_prop + pos_coef_ub_input2 * lambda_ub_input2_prop
+            lb_coef_input1 = neg_coef_lb_input1 * lambda_ub_input1_prop + pos_coef_lb_input1 * lambda_lb_input1_prop
+            ub_coef_input1 = neg_coef_ub_input1 * lambda_lb_input1_prop + pos_coef_ub_input1 * lambda_ub_input1_prop
+            lb_coef_input2 = neg_coef_lb_input2 * lambda_ub_input2_prop + pos_coef_lb_input2 * lambda_lb_input2_prop
+            ub_coef_input2 = neg_coef_ub_input2 * lambda_lb_input2_prop + pos_coef_ub_input2 * lambda_ub_input2_prop
+        else:
+            lb_bias_input1 = None
+            ub_bias_input1 = None
+            lb_bias_input2 = None
+            ub_bias_input2 = None
+
+            lb_coef_input1 = None
+            ub_coef_input1 = None
+            lb_coef_input2 = None
+            ub_coef_input2 = None
+
 
         back_prop_struct.populate(delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias, 
                                     delta_ub_coef=delta_ub_coef, delta_ub_bias=delta_ub_bias,
@@ -750,15 +788,27 @@ class DiffDeepPoly:
         delta_ub_input1_coef = torch.zeros((layer_size, layer_size), device=self.device)
         delta_lb_input2_coef = torch.zeros((layer_size, layer_size), device=self.device)
         delta_ub_input2_coef = torch.zeros((layer_size, layer_size), device=self.device)
-        lb_coef_input1 = torch.eye(n=layer_size, device=self.device)
-        lb_coef_input2 = torch.eye(n=layer_size, device=self.device)
-        ub_coef_input1 = torch.eye(n=layer_size, device=self.device)
-        ub_coef_input2 = torch.eye(n=layer_size, device=self.device)
+        if self.lightweight_diffpoly is False:
+            lb_coef_input1 = torch.eye(n=layer_size, device=self.device)
+            lb_coef_input2 = torch.eye(n=layer_size, device=self.device)
+            ub_coef_input1 = torch.eye(n=layer_size, device=self.device)
+            ub_coef_input2 = torch.eye(n=layer_size, device=self.device)
 
-        lb_bias_input1 = torch.zeros(layer_size, device=self.device)
-        lb_bias_input2 = torch.zeros(layer_size, device=self.device)
-        ub_bias_input1 = torch.zeros(layer_size, device=self.device)
-        ub_bias_input2 = torch.zeros(layer_size, device=self.device)
+            lb_bias_input1 = torch.zeros(layer_size, device=self.device)
+            lb_bias_input2 = torch.zeros(layer_size, device=self.device)
+            ub_bias_input1 = torch.zeros(layer_size, device=self.device)
+            ub_bias_input2 = torch.zeros(layer_size, device=self.device)
+        else:
+            lb_coef_input1 = None
+            lb_coef_input2 = None
+            ub_coef_input1 = None
+            ub_coef_input2 = None
+
+            lb_bias_input1 = None
+            lb_bias_input2 = None
+            ub_bias_input1 = None
+            ub_bias_input2 = None
+
 
         back_prop_struct = DiffPropStruct()
         back_prop_struct.populate(delta_lb_coef=delta_lb_coef, delta_lb_bias=delta_lb_bias, 
@@ -1008,12 +1058,13 @@ class DiffDeepPoly:
         return delta_lbs, delta_ubs
 
     def run(self):
-        for ind, layer in enumerate(self.net):
-            if layer.type in [LayerType.Linear, LayerType.Conv2D]:
-                self.linear_conv_layer_indices.append(ind)
-        
-        if self.use_all_layers is True:
-            return self.run_full_back_substitution()
-        else:
-            return self.run_only_affine_back_substitution()
+        with torch.no_grad():
+            for ind, layer in enumerate(self.net):
+                if layer.type in [LayerType.Linear, LayerType.Conv2D]:
+                    self.linear_conv_layer_indices.append(ind)
+            
+            if self.use_all_layers is True:
+                return self.run_full_back_substitution()
+            else:
+                return self.run_only_affine_back_substitution()
 
