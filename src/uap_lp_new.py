@@ -286,9 +286,7 @@ class UAPLPtransformer:
             return self.gmdl.ObjBound
         else:
             if self.gmdl.status == 4:
-                self.gmdl.setParam('PreDual',0)
-                self.gmdl.setParam('DualReductions', 0)
-                self.gmdl.optimize()
+                return 0.0
             elif self.gmdl.status in [9, 11, 13]:
                 print("Suboptimal solution")
                 self.debug_log_file.close()
@@ -305,10 +303,10 @@ class UAPLPtransformer:
             self.debug_log_file.close()    
             print("Gurobi model status", self.gmdl.status)
             print("The optimization failed\n")
-            print("Computing computeIIS")
-            self.gmdl.computeIIS()
-            print("Computing computeIIS finished")            
-            self.gmdl.write("model.ilp")
+            # print("Computing computeIIS")
+            # self.gmdl.computeIIS()
+            # print("Computing computeIIS finished")            
+            # self.gmdl.write("model.ilp")
             self.debug_log_file.close()
             return 0.0
 
