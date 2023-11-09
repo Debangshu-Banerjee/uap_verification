@@ -84,12 +84,13 @@ def load_pth_model(path, param_dict):
     if "linear_size" in param_dict.keys():
         linear_size = param_dict["linear_size"]
     else:
-        raise ValueError("In kernel size is missing")
+        linear_size = None
+        #raise ValueError("In kernel size is missing")
     if "width" in param_dict.keys():
         width = param_dict["width"]
     else:
         raise ValueError("In width is missing")
-    model_structure = model_cnn_2layer(in_ch=in_channel, in_dim=in_dimension, width=width, linear_size=linear_size)
+    model_structure = model_cnn_3layer_fixed(in_ch=in_channel, in_dim=in_dimension, width=width, kernel_size = param_dict['kernel_size'], linear_size=linear_size)
     dict_n = torch.load(path,  map_location=torch.device('cpu'))
     model_state_dict = dict_n['state_dict']
     model_structure.load_state_dict(model_state_dict)

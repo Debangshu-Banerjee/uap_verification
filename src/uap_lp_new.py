@@ -299,10 +299,10 @@ class UAPLPtransformer:
             self.debug_log_file.close()    
             print("Gurobi model status", self.gmdl.status)
             print("The optimization failed\n")
-            print("Computing computeIIS")
-            self.gmdl.computeIIS()
-            print("Computing computeIIS finished")            
-            self.gmdl.write("model.ilp")
+            #print("Computing computeIIS")
+            #self.gmdl.computeIIS()
+            #print("Computing computeIIS finished")            
+            #self.gmdl.write("model.ilp")
             self.debug_log_file.close()
             return 0.0
 
