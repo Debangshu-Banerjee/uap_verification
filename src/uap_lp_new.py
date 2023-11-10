@@ -14,7 +14,7 @@ def softtime(model, where):
         runtime = model.cbGet(GRB.Callback.RUNTIME)
         objbst = model.cbGet(GRB.Callback.MIP_OBJBST)
         objbnd = model.cbGet(GRB.Callback.MIP_OBJBND)
-        if runtime > 80 and objbnd > 0.0:
+        if runtime > 240 and objbnd > 0.0:
             model.terminate()
 
 
@@ -84,7 +84,7 @@ class UAPLPtransformer:
             return
         self.debug_log_file = open(self.debug_log_filename, 'w+')
         self.gmdl.setParam('OutputFlag', False)
-        self.gmdl.setParam('TimeLimit', 300)
+        self.gmdl.setParam('TimeLimit', 600)
         # self.gmdl.Params.SolutionLimit = 1
         self.gmdl.Params.MIPFocus = 3
         self.gmdl.Params.ConcurrentMIP = 3
@@ -720,7 +720,7 @@ class UAPLPtransformer:
                                      name=f'layer_{layer_idx}_{layer_type}_x{i}') for i in range(self.batch_size)]
             if self.track_differences is True:
                 if self.args is not None and self.args.all_layer_sub is True:
-                    if self.batch_size > 0 and layer_idx < len(self.d_lbs[(0, 1)]):
+                    if self.batch_size > 1 and layer_idx < len(self.d_lbs[(0, 1)]):
                         ds = [[self.gmdl.addMVar(self.d_lbs[(i, j)][layer_idx].shape[0], lb=self.d_lbs[(i, j)][layer_idx] -self.tolerence,
                                 ub=self.d_ubs[(i, j)][layer_idx] + self.tolerence,
                                 vtype=grb.GRB.CONTINUOUS, name=f'layer{layer_idx}_d({i}-{j})') for j in range(i+1, self.batch_size)] 
