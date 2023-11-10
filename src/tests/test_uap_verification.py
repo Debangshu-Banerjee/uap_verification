@@ -17,8 +17,8 @@ class TestBasicUap(TestCase):
             spec_type=InputSpecType.UAP, count=2, count_per_prop=5, eps=0.15, net=config.MNIST_CONV_BIG,                                                                                                              
             timeout=100, output_dir='results_trial/', radius_l=0.002, radius_r=0.25,
             uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=False,
-            no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=2,
-            try_image_smoothing=False, filter_threshold=None, fold_conv_layers=False, ligweight_diffpoly=True)
+            no_lp_for_verified = True, debug_mode=True, track_differences=True, lp_formulation_threshold=2,
+            try_image_smoothing=False, filter_threshold=None, fold_conv_layers=False, ligweight_diffpoly=False)
         uap_ver.UapVerification(uap_verfication_args)
 
     def test_mnist_uap_full(self):
