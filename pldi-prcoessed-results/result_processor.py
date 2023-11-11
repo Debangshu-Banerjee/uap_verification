@@ -74,7 +74,6 @@ class DataStructList:
         epsilons = []
         temp_dict = {}
         threshold = self.get_threshold(net_name=net_name)
-        print(f'threshold {threshold}')
         for data in self.data_struct_list:
             epsilons.append(data.eps)
             # individual.append(data.individual_percentage)  
@@ -90,7 +89,6 @@ class DataStructList:
             if threshold is not None and epsilon > threshold:
                 break
             length += 1
-            print(f'{net_name} {epsilon}')            
             individual.append(temp_dict[epsilon][0])  
             io_formulation.append(temp_dict[epsilon][1])
             raven_no_diff.append(temp_dict[epsilon][2])
@@ -105,7 +103,6 @@ class DataStructList:
         avg_timings = np.array([0.0, 0.0, 0.0, 0.0])
         avg_MILP_times = np.array([0.0, 0.0])
         threshold = self.get_threshold(net_name=net_name)
-        print(f'thershold {threshold}')
         list_length = 0
         for data in self.data_struct_list:
             eps = data.eps
@@ -247,7 +244,6 @@ def main():
     thersholds[config.MNIST_CONV_SMALL_DIFFAI] = 0.1503
     thersholds[config.MNIST_CROWN_IBP_MED] = 0.203
     thersholds[config.MNIST_CONV_BIG] = 0.251
-    print(f'keys {thersholds.keys()}')    
     domains = ['DEEPZ', 'DEEPPOLY']
     ans_dict = {}
     for net_name in net_names:
