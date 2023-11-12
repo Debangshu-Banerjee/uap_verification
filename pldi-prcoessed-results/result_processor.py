@@ -44,16 +44,17 @@ class DataStructList:
         # Setting the background color of the plot 
         # using set_facecolor() method
         ax.set_facecolor("lightgrey")
-        plt.plot(eps, individual, label='Individual', linestyle='-', color='blue')
-        plt.plot(eps, io_formulation, label='I/O Formulation', linestyle='-', color='red')
-        plt.plot(eps, raven, label='RaVeN', linestyle='-', color='green')
+        plt.plot(eps, individual, marker='D', label='Individual', linestyle='-', color='blue')
+        plt.plot(eps, io_formulation, marker='s', label='I/O Formulation', linestyle='-', color='red')
+        plt.plot(eps, raven, marker='o', label='RaVeN', linestyle='-', color='green')
         if raven_no_diff is not None:
-            plt.plot(eps, raven_no_diff, label='RaVeN Layerwise', linestyle='-', color='black')
+            plt.plot(eps, raven_no_diff, marker='+', label='RaVeN Layerwise', linestyle='-', color='black')
         plt.legend(loc=4, fontsize="10")
         # Add labels and a legend
-        plt.xlabel('Epsilon')
-        plt.ylabel('Worst Case Accuracy (%)')
-        plt.legend(loc=3, fontsize="10")
+        plt.xlabel('Epsilon', fontsize=15)
+        plt.ylabel('Worst Case Accuracy (%)', fontsize=15)
+        plt.legend(loc=3, fontsize="12")
+        plt.tight_layout(pad=0.5)
         dir_name = 'plots'
         diff = '' if raven_no_diff is None else '_diff'
         # plt.show()
