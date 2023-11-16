@@ -27,6 +27,7 @@ from src.domains.deepz_uap import ZonoUAPTransformer
 from src.domains.deeppolyOptimized import DeepPolyTransformerOptimized
 from src.networks import FullyConnected, Conv
 from src.common.network import LayerType, Layer
+from training.binary_model_loader import load_model
 
 rt.set_default_logger_severity(3)
 
@@ -78,6 +79,10 @@ def get_linear_layers(net):
         linear_layers.append(layer)
     return linear_layers
 
+def load_binary_net(net_name):
+    model = load_model(net_name=net_name)
+    return model
+
 
 def get_torch_net(net_file, dataset, device='cpu'):
     net_name = net_file.split('/')[-1].split('.')[-2]
@@ -90,6 +95,15 @@ def get_torch_net(net_file, dataset, device='cpu'):
         return model
     
     if 'pt' in net_file:
+        if 'binary' in net_file:
+            model = load_binary_net(net_name=net_file)
+            if 'relu' in net_file:
+                model = [model.fc1, model.relu, model.fc2]
+            if 'sigmoid' in net_file:
+                model = [model.fc1, model.sigmoid, model.fc2]
+            if 'tanh' in net_file:
+                model = [model.fc1, model.tanh, model.fc2]
+            return model
         model = load_pt_model_modified(net_file)
         return model
 

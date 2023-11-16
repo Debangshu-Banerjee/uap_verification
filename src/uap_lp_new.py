@@ -299,7 +299,7 @@ class UAPLPtransformer:
         for i, constraint_mat in enumerate(self.constraint_matrices):
             final_var = self.gmdl.addMVar(constraint_mat.shape[1], lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, 
                                             name=f'final_var_{i}')
-            self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_var_dict[len(self.gurobi_var_dict) - 2]['vs'][i])
+            self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_variables[-1]['vs'][i])
             final_vars.append(final_var)
             final_var_min = self.gmdl.addVar(lb=-float('inf'), ub=float('inf'), 
                                                 vtype=grb.GRB.CONTINUOUS, 
@@ -438,7 +438,9 @@ class UAPLPtransformer:
             elif layer_type == LayerType.ReLU:
                 vs, ds = self.create_vars(layer_idx, 'relu')
             elif layer_type == LayerType.Conv2D:            
-                vs, ds = self.create_vars(layer_idx, 'conv2d')            
+                vs, ds = self.create_vars(layer_idx, 'conv2d')           
+            elif layer_type in [LayerType.Sigmoid, LayerType.TanH]:            
+                vs, ds = self.create_vars(layer_idx, 'sigmoid')            
             elif layer_type == LayerType.Flatten:
                 continue
             else:

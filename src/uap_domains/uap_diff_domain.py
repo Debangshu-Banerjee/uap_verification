@@ -124,14 +124,14 @@ class UapDiff:
             print(self.input_list)
             print("input1 ", self.input_list[0])
             print("input2 ", self.input_list[1])
-            print(self.input_lbs)
-            print(self.input_ubs)
-            print(self.difference_lbs_dict)
-            print(self.difference_ubs_dict)
+            print(f'input lbs {self.input_lbs}')
+            print(f'input ubs {self.input_ubs}')
+            print(f'diff lbs {self.difference_lbs_dict}')
+            print(f'diff ubs {self.difference_ubs_dict}')
             print(self.eps)
-            print(self.net[0].weight, self.net[0].bias)
-            print(self.net[1].weight, self.net[1].bias)
-            print(self.net[2].weight, self.net[2].bias)
+            # print(self.net[0].weight, self.net[0].bias)
+            # print(self.net[1].weight, self.net[1].bias)
+            # print(self.net[2].weight, self.net[2].bias)
             
         # Call the lp formulation with the differential lp code.
         if not diff:

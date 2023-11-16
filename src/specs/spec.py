@@ -267,6 +267,7 @@ def remove_unclassified_images(inputs, labels, dataset, net_name):
         return inputs, labels
 
     model = get_net(net_name, dataset)
+    print(f"labels {labels}")
     try:
         with torch.no_grad():
             only_net_name = net_name.split('/')[-1]
@@ -339,9 +340,10 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None,
             inputs, labels = inputs[:count], labels[:count]
             props = get_targeted_UAP_spec(inputs, labels, eps, dataset, net_name=net_name)
         elif spec_type == InputSpecType.UAP_BINARY:
-            testloader = prepare_data(dataset, batch_size=12*count)
+            testloader = prepare_data(dataset, batch_size=20*count)
             inputs, labels = next(iter(testloader))
             inputs, labels = process_input_for_binary(inputs=inputs, labels=labels, target_count=count)
+            inputs, labels = remove_unclassified_images(inputs, labels, dataset, net_name)            
             props = get_binary_uap_spec(inputs=inputs, labels=labels, eps=eps, dataset=dataset, net_name=net_name)   
         return props, inputs
     elif dataset == Dataset.HOUSING:

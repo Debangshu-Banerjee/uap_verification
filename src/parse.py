@@ -2,7 +2,7 @@ import torch
 import src.common as common
 import src.util as util
 
-from torch.nn import ReLU, Linear, Conv2d
+from torch.nn import ReLU, Linear, Conv2d, Sigmoid, Tanh
 
 from src.domains.lptransformer import LPTransformer
 from onnx import numpy_helper
@@ -110,6 +110,10 @@ def parse_torch_layers(net):
     for torch_layer in net:
         if isinstance(torch_layer, ReLU):
             layers.append(Layer(type=LayerType.ReLU))
+        elif isinstance(torch_layer, Sigmoid):
+            layers.append(Layer(type=LayerType.Sigmoid))
+        elif isinstance(torch_layer, Tanh):
+            layers.append(Layer(type=LayerType.TanH))            
         elif isinstance(torch_layer, Linear):
             layer = Layer(weight=torch_layer.weight, bias=torch_layer.bias, type=LayerType.Linear)
             layers.append(layer)
