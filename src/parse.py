@@ -56,7 +56,6 @@ def parse_onnx_layers(net):
         node = net.graph.node[cur_layer]
         operation = node.op_type
         nd_inps = node.input
-        print(operation)
         if operation == 'MatMul':
             # Assuming that the add node is followed by the MatMul node
             add_node = net.graph.node[cur_layer + 1]

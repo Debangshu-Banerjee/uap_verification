@@ -63,6 +63,20 @@ class TestBasicUap(TestCase):
             uap_ver.UapVerification(uap_verfication_args)
         
 
+    def test_mnist_hamming_full(self):
+        eps = 0.1
+        for _ in range(20):
+            uap_verfication_args = uap_ver.UapAnalysisArgs(
+                individual_prop_domain=Domain.DEEPPOLY,
+                domain=Domain.UAP_DIFF, baseline_domain=Domain.UAP_BASIC_LP, dataset=Dataset.MNIST, sink_label=None,
+                spec_type=InputSpecType.UAP_BINARY, count=20, count_per_prop=10, eps=eps, net=config.MNIST_BINARY_RELU_PGD,                                                                                                              
+                timeout=100, output_dir='pldi-results/', radius_l=0.002, radius_r=0.25,
+                uap_mode=analyzer.UAPMode.VERIFICATION, compute_proportion=True, write_file=True,
+                no_lp_for_verified = True, debug_mode=False, track_differences=True, lp_formulation_threshold=5,
+                try_image_smoothing=False, filter_threshold=-15.0)
+            eps += 0.005
+            uap_ver.UapVerification(uap_verfication_args)
+        
 
     def test_mnist_uap_full_big(self):        
         eps = 0.15

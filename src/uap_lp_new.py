@@ -59,6 +59,7 @@ class UAPLPtransformer:
         self.args = args
         self.g_constrs = []
         self.par_constraints = False
+        self.tanh_binary_count = 0
         self.bint = 1e15
         self.lightweight_difference = self.args.lightweight_diffpoly
         if self.lightweight_difference and self.args.fold_conv_layers:
@@ -1015,6 +1016,18 @@ class UAPLPtransformer:
 
         return lambda_lb, mu_lb, lambda_ub, mu_ub
 
+    def get_deriv_min_max(self, lb, ub):
+        tanh_lb, tanh_ub = torch.tanh(lb), torch.tanh(ub)
+        lambda_lower, lambda_upper = 1.0 - (tanh_lb * tanh_lb), 1.0 - (tanh_ub * tanh_ub)
+        input_active = (lb >= 0)
+        input_passive = (ub <= 0) 
+        input_unsettled = ~(input_active) & ~(input_passive)
+
+        deriv_min = torch.min(lambda_lower, lambda_upper)
+        deriv_max = torch.ones(lb.size(), device='cpu')
+        deriv_max = torch.where(~input_unsettled, torch.max(lambda_lower, lambda_upper), deriv_max)
+        return deriv_min, deriv_max
+
     def get_tanh_diff_lambda_mu(self, lb, ub, delta_lb_layer, delta_ub_layer):
         tanh_lb, tanh_ub = torch.tanh(lb), torch.tanh(ub)
         lambda_lower, lambda_upper = 1.0 - (tanh_lb * tanh_lb), 1.0 - (tanh_ub * tanh_ub)
@@ -1091,11 +1104,21 @@ class UAPLPtransformer:
                     lambda_lb, mu_lb, lambda_ub, mu_ub = self.get_tanh_diff_lambda_mu(lb=lb, ub=ub,
                                                                                         delta_lb_layer=d_lb,
                                                                                         delta_ub_layer=d_ub)
+                    deriv_min, deriv_max = self.get_deriv_min_max(lb=lb, ub=ub)
                     for k in range(tensor_length):
                         self.gmdl.addConstr(ds[i][j - i -1][k] >= lambda_lb[k]*self.gurobi_variables[-1]['ds'][i][j - i -1][k]
                                                                  + mu_lb[k])
                         self.gmdl.addConstr(ds[i][j - i -1][k] <= lambda_ub[k]*self.gurobi_variables[-1]['ds'][i][j - i -1][k]
                                                                  + mu_ub[k])
+                        if d_lb[k] < 0 and d_ub[k] > 0:
+                            ind = self.gmdl.addVar(vtype=grb.GRB.BINARY, name=f"ind_{self.tanh_binary_count}")
+                            self.addGenConstrIndicator(ind, True, self.gurobi_variables[-1]['ds'][i][j - i -1][k] >= 0)
+                            self.addGenConstrIndicator(ind, False, self.gurobi_variables[-1]['ds'][i][j - i -1][k] <= -1e-9)
+                            self.gmdl.addConstr(ds[i][j - i -1][k] >= (1 - ind) * deriv_max * d_lb[k] + deriv_min[k] * self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                            self.gmdl.addConstr(ds[i][j - i -1][k] >= (ind) * (-deriv_max) * d_ub[k]  + deriv_max[k] * self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                            self.gmdl.addConstr(ds[i][j - i -1][k] <= (ind) * deriv_max * d_ub[k] + deriv_min[k] * self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+                            self.gmdl.addConstr(ds[i][j - i -1][k] <= (1- ind) * (deriv_max) * (-d_lb[k]) + deriv_max[k] * self.gurobi_variables[-1]['ds'][i][j - i -1][k])
+
             if self.lightweight_difference is True:
                 self.track_differences = False 
         self.gurobi_variables.append({'vs': vs, 'ds': ds})

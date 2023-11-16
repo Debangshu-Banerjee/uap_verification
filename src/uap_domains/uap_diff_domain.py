@@ -24,7 +24,7 @@ class UapDiff:
         self.lp_formulation_threshold = self.args.lp_formulation_threshold
         self.baseline_verified_props = 0
         self.noise_ind = baseline_results[0].noise_ind
-        self.monotone_lp = True
+        self.monotone_lp = False
         #self.eps = baseline_results[0].eps
 
     def compute_difference_dict(self, monotone = False):
