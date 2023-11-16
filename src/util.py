@@ -376,6 +376,8 @@ def get_net(net_name, dataset, debug_mode=False):
     elif net_format == 'onnx':
         net_onnx = onnx.load(net_name)
         net = parse.parse_onnx_layers(net_onnx)
+        print(len(net))
+        print(net_name)
     else:
         raise ValueError("Unsupported net format!")
 

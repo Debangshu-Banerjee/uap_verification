@@ -24,6 +24,7 @@ class UapDiff:
         self.lp_formulation_threshold = self.args.lp_formulation_threshold
         self.baseline_verified_props = 0
         self.noise_ind = baseline_results[0].noise_ind
+        self.monotone_lp = True
         #self.eps = baseline_results[0].eps
 
     def compute_difference_dict(self, monotone = False):
@@ -42,7 +43,7 @@ class UapDiff:
                                 lb_input1=input1_lbs, ub_input1=input1_ubs,
                                 lb_input2=input2_lbs, ub_input2=input2_ubs, device='cpu', 
                                 noise_ind = self.noise_ind, eps = self.eps, 
-                                monotone = monotone, use_all_layers=self.args.all_layer_sub, 
+                                monotone = monotone, monotone_prop = self.args.monotone_prop, use_all_layers=self.args.all_layer_sub, 
                                 lightweight_diffpoly=self.args.lightweight_diffpoly)
                     delta_lbs, delta_ubs = diff_poly_ver.run()
                 self.difference_lbs_dict[(i, j)] = delta_lbs
@@ -105,7 +106,7 @@ class UapDiff:
         if self.args is not None and self.args.fold_conv_layers is True:
             self.populate_diff_structs()
 
-        if monotone:
+        if monotone and not self.monotone_lp:
             verified_status = Status.UNKNOWN
             print(self.difference_lbs_dict[(0,1)][-1], self.difference_ubs_dict[(0,1)][-1])
             if not monotonic_inv:
@@ -159,9 +160,16 @@ class UapDiff:
         verified_percentages = None
         global_lb = None
         verified_status = Status.UNKNOWN
-        if isinstance(monotone, torch.FloatTensor):
+        if monotone:
             verified_percentages = uap_lp_transformer.optimize_monotone(monotone)
+            print(verified_percentages)
+            if verified_percentages >= 0:
+                verified_status = Status.VERIFIED
+            return UAPSingleRes(domain=self.args.domain, input_per_prop=self.args.count_per_prop,
+                status=verified_status, global_lb=None, time_taken=None, 
+                verified_proportion=None) 
         elif targeted:
+            print('hi')
             verified_percentages, bin_sizes = uap_lp_transformer.optimize_targeted()
             print("Diff global proportion ", verified_percentages)
             results = []

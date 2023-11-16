@@ -94,7 +94,7 @@ def UapMonotonicityBackend(props, uap_verification_args):
         props_to_analyze = props[i * input_per_prop : (i+1) * input_per_prop]
         uap_analyzer = UAPAnalyzerBackendWrapper(props=props_to_analyze, args=uap_verification_args)
         # run the uap verification
-        res = uap_analyzer.run_monotone()
+        res = uap_analyzer.run_monotone(uap_verification_args.monotone_prop)
         uap_result_list.add_results(res)
     if uap_verification_args.write_file == True:
        uap_result_list.analyze_monotone(uap_verification_args)

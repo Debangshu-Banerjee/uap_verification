@@ -135,7 +135,7 @@ class UAPResultList:
     def analyze_monotone(self, args):
         diff_verified_count = 0
         # lp_verified_count = 0
-        filename = args.output_dir + f'{args.net_name}_{args.monotone_prop}_{args.count_per_prop}_{args.count}_{args.eps}.dat'
+        filename = args.output_dir + f'{args.net_name}_{args.count_per_prop}_{args.count}_{args.eps}.dat'
         file = open(filename, 'a+')
         times = 0
         for i, res in enumerate(self.result_list):
@@ -144,6 +144,7 @@ class UAPResultList:
             if UAP_res.status == Status.VERIFIED:
                 diff_verified_count += 1
             times += res.times
+        file.write(f'\n\n\nProp : {args.monotone_prop}\n')
         file.write(f'\n\n\nEps : {args.eps}\n')
         file.write(f'Diff verified: {diff_verified_count}\n')
         file.write(f'Time: {times}')
@@ -166,6 +167,7 @@ class UAPResultList:
             baseline_res = res.baseline_res
             UAP_res = res.UAP_res
             file.write(f'\nProperty No. {i}\n\n')
+            #print(individual_res[i].target_ubs)
             if individual_res is not None:
                 #print("DeepZ lbs", [res.final_lb for res in self.baseline_results])
                 deepz_res = [[] for i in range(10)]
@@ -177,7 +179,7 @@ class UAPResultList:
                 veri = torch.tensor([(sum(res)).item() for res in deepz_res])
                 individual_verified_count += veri
                 file.write(f"individual verified proportion {[(veri[i]/len(deepz_res[i])).item() for i in range(len(deepz_res))]}\n")
-            if baseline_res[0].verified_proportion is not None:
+            if baseline_res is not None:
                 baseline_verified_count += torch.tensor([base_res.verified_proportion * base_res.bin_size for base_res in baseline_res])
                 #baseline_verified_count += baseline_res.verified_proportion * args.count_per_prop
                 file.write(f"baseline verified proportion {[base_res.verified_proportion for base_res in baseline_res]}\n")

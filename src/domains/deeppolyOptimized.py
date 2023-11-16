@@ -47,6 +47,8 @@ class DeepPolyTransformerOptimized:
         elif self.size == 2:
             # For debug network
             self.shape = (1, 1, 2)
+        elif self.size == 87:
+            self.shape = (1, 1, 87)
         self.shapes.append(self.shape)
 
         self.device = device if device is not None else 'cpu'
@@ -60,7 +62,8 @@ class DeepPolyTransformerOptimized:
         neg_comp_lb, pos_comp_lb = self.pos_neg_weight_decomposition(diff_struct.lb_coef)
         neg_comp_ub, pos_comp_ub = self.pos_neg_weight_decomposition(diff_struct.ub_coef)
         lb = neg_comp_lb @ ub_layer + pos_comp_lb @ lb_layer + diff_struct.lb_bias
-        ub = neg_comp_ub @ lb_layer + pos_comp_ub @ ub_layer + diff_struct.ub_bias        
+        ub = neg_comp_ub @ lb_layer + pos_comp_ub @ ub_layer + diff_struct.ub_bias 
+        #print(ub - lb)      
         assert torch.all(lb <= ub + 1e-6)
         return lb, ub    
     
@@ -340,6 +343,9 @@ class DeepPolyTransformerOptimized:
 
         self.lbs.append(self.ilb)
         self.ubs.append(self.iub)
+        # print(f'lbs: {self.lbs[-1]}')
+        # print(f'ubs: {self.ubs[-1]}')
+        # print(f'diff: {self.ubs[-1] - self.lbs[-1]}')
 
         lb_debug, _ = self.concrete_substitution(diff_struct=diff_struct, lb_layer=self.ilb, ub_layer=self.iub)
 

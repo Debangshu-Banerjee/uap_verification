@@ -62,7 +62,7 @@ class DiffPropStruct:
 class DiffDeepPoly:
     def __init__(self, input1, input2, net, lb_input1, ub_input1,
                 lb_input2, ub_input2, device='', noise_ind = None,
-                eps = None, monotone = False, use_all_layers=False, lightweight_diffpoly=False) -> None:
+                eps = None, monotone = False, monotone_prop = 0, use_all_layers=False, lightweight_diffpoly=False) -> None:
         self.input1 = input1
         self.input2 = input2
         if self.input1.shape[0] == 784:
@@ -73,6 +73,8 @@ class DiffDeepPoly:
             self.input_shape = (1, 1, 2)
         elif self.input1.shape[0] == 12:
             self.input_shape = (1, 1, 12)
+        elif self.input1.shape[0] == 87:
+            self.input_shape = (1, 1, 87)
         else:
             raise ValueError(f"Unrecognised input shape {self.input_shape}")
         self.net = net
@@ -91,6 +93,8 @@ class DiffDeepPoly:
         self.monotone = monotone
         self.use_all_layers = use_all_layers
         self.lightweight_diffpoly = lightweight_diffpoly
+        self.monotone_prop = monotone_prop
+        #print(self.monotone_prop)
 
     # Bias cancels out (Ax + b - Ay - b) = A(x - y) = A * delta 
     def handle_linear(self, linear_wt, bias, back_prop_struct):
@@ -902,8 +906,9 @@ class DiffDeepPoly:
         
         if self.monotone:         
             new_delta_lb, new_delta_ub = self.concretize_bounds(back_prop_struct=back_prop_struct,
-                                                                delta_lb_layer=torch.zeros(12),#-self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(), 
-                                                                delta_ub_layer=self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(),
+                                                                #delta_lb_layer=torch.zeros(12),#-self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(),
+                                                                delta_lb_layer = torch.zeros(87),
+                                                                delta_ub_layer = self.eps * torch.nn.functional.one_hot(torch.tensor(self.monotone_prop), 87).flatten(),
                                                                 lb_input1_layer=self.lb_input1[-1],
                                                                 ub_input1_layer=self.ub_input1[-1],
                                                                 lb_input2_layer=self.lb_input2[-1],
@@ -986,11 +991,13 @@ class DiffDeepPoly:
                                                   layer_idx=i-1, delta_lbs=delta_lbs, delta_ubs=delta_ubs)
             if curr_layer.type in [LayerType.Linear, LayerType.Conv2D]:
                 linear_layer_index -= 1
-                
+        #print(self.eps)
         if self.monotone:         
             new_delta_lb, new_delta_ub = self.concretize_bounds(back_prop_struct=back_prop_struct,
-                                                                delta_lb_layer=torch.zeros(12),#-self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(), 
-                                                                delta_ub_layer=self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(),
+                                                                #delta_lb_layer=torch.zeros(12),#-self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(), 
+                                                                #delta_ub_layer=self.eps * torch.nn.functional.one_hot(self.noise_ind[0], 12).flatten(),
+                                                                delta_lb_layer = torch.zeros(87),
+                                                                delta_ub_layer = self.eps * torch.nn.functional.one_hot(torch.tensor(self.monotone_prop), 87).flatten(),
                                                                 lb_input1_layer=self.lb_input1[-1],
                                                                 ub_input1_layer=self.ub_input1[-1],
                                                                 lb_input2_layer=self.lb_input2[-1],
@@ -1014,7 +1021,7 @@ class DiffDeepPoly:
         self.log_file = open(self.diff_log_filename, 'w+')
         delta_lbs = []
         delta_ubs = []
-        
+
         # Check the validity of inputs.
         if self.net is None:
             raise ValueError("Passed network can not be none")
@@ -1024,6 +1031,7 @@ class DiffDeepPoly:
             raise ValueError("Input1 bounds do not match")
         
         for layer_idx, layer in enumerate(self.net):
+            #print(layer_idx, layer.type)
             if layer.type is LayerType.ReLU:
                 self.lb_input1[layer_idx] = torch.max(self.lb_input1[layer_idx], torch.zeros(self.lb_input1[layer_idx].size(),
                                                                                               device=self.device))

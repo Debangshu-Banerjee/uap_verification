@@ -56,14 +56,19 @@ def parse_onnx_layers(net):
         node = net.graph.node[cur_layer]
         operation = node.op_type
         nd_inps = node.input
+        print(operation)
         if operation == 'MatMul':
             # Assuming that the add node is followed by the MatMul node
             add_node = net.graph.node[cur_layer + 1]
             bias = model_name_to_val_dict[add_node.input[1]]
 
             # Making some weird assumption that the weight is always 0th index
-            layer = Layer(weight=model_name_to_val_dict[nd_inps[0]], bias=bias, type=LayerType.Linear)
-            layers.append(layer)
+            if 'cast_input' in nd_inps[0] or 'next_activations' in nd_inps[0]: #weird change for adult tanh network
+                nd_inps[0] = nd_inps[1]
+                layer = Layer(weight=model_name_to_val_dict[nd_inps[0]].T, bias=bias.T, type=LayerType.Linear)
+            else:
+                layer = Layer(weight=model_name_to_val_dict[nd_inps[0]], bias=bias, type=LayerType.Linear)
+            layers.append(layer)    
 
         elif operation == 'Conv':
             layer = Layer(weight=model_name_to_val_dict[nd_inps[1]], bias=(model_name_to_val_dict[nd_inps[2]]),

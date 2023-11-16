@@ -31,7 +31,7 @@ class UAPAnalyzerBackendWrapper:
         baseline_result = baseline_verfier.run()
         return None
 
-    def run_monotone(self):
+    def run_monotone(self, monotone_prop):
         start_time = time.time()
         with torch.no_grad():
             baseline_verfier = BaselineAnalyzerBackend(props=self.props, net=self.net, args=self.args)
@@ -50,15 +50,15 @@ class UAPAnalyzerBackendWrapper:
             individual_verification_results = baseline_verfier.run()
         individual_time = time.time() - start_time
         
-        start_time = time.time()
-        baseline_res = self.run_uap_verification(domain=self.args.baseline_domain, individual_verification_results=individual_verification_results, targeted = True)
-        baseline_time = time.time() - start_time
+        # start_time = time.time()
+        # baseline_res = self.run_uap_verification(domain=self.args.baseline_domain, individual_verification_results=individual_verification_results, targeted = True)
+        # baseline_time = time.time() - start_time
 
         start_time = time.time()
         uap_algorithm_res = self.run_uap_verification(domain=self.args.domain, individual_verification_results=individual_verification_results, targeted = True)
         uap_time = time.time() - start_time
 
-        return UAPResult(baseline_res=baseline_res, UAP_res=uap_algorithm_res, individual_res=individual_verification_results, targeted = True, times = [individual_time, baseline_time, uap_time, sum([res.constraint_time for res in uap_algorithm_res]), sum([res.optimize_time for res in uap_algorithm_res])], props = self.props)
+        return UAPResult(baseline_res=None, UAP_res=uap_algorithm_res, individual_res=individual_verification_results, targeted = True, times = [individual_time, baseline_time, uap_time, sum([res.constraint_time for res in uap_algorithm_res]), sum([res.optimize_time for res in uap_algorithm_res])], props = self.props)
 
 
     def run_timings(self):
@@ -121,7 +121,7 @@ class UAPAnalyzerBackendWrapper:
         return UAPResult(baseline_res=baseline_res, UAP_res=uap_algorithm_res)
 
 
-    def run_uap_verification(self, domain, individual_verification_results, targeted = False, monotone = False, monotonic_inv = False, diff = True):
+    def run_uap_verification(self, domain, individual_verification_results, targeted = False, monotone = False, monotone_prop = 0, monotonic_inv = False, diff = True):
         uap_verifier = get_uap_domain_transformer(domain=domain, net=self.net, props=self.props, 
                                                            args=self.args, 
                                                            baseline_results=individual_verification_results)

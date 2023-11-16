@@ -38,28 +38,71 @@ class DataStructList:
                     raven, raven_no_diff=None, net_name='', domain=''):
         sns.set_style("darkgrid")
         # Plot the three line plots
-        plt.figure(figsize=(8, 6))  # Optional: set the figure size
+        plt.figure(figsize=(6, 4.5))  # Optional: set the figure size
         ax = plt.axes()
+        ax.grid(axis='x')
         
         # Setting the background color of the plot 
         # using set_facecolor() method
         ax.set_facecolor("lightgrey")
-        plt.plot(eps, individual, marker='D', label='Individual', linestyle='-', color='blue')
-        plt.plot(eps, io_formulation, marker='s', label='I/O Formulation', linestyle='-', color='red')
-        plt.plot(eps, raven, marker='o', label='RaVeN', linestyle='-', color='green')
-        if raven_no_diff is not None:
-            plt.plot(eps, raven_no_diff, marker='+', label='RaVeN Layerwise', linestyle='-', color='black')
+        if 'cifar' in net_name:
+            eps = [255 * e for e in eps]
+        binary = 'binary' in net_name
+        if binary:
+            individual = [20 - e/10 for e in individual]
+            io_formulation = [20 - e/10 for e in io_formulation]
+            raven = [20 - e/10 for e in raven]
+            if raven_no_diff is not None:
+                raven_no_diff = [20 - e/10 for e in raven_no_diff]
+        cls = 'cls' in net_name
+        if cls:
+            plt.plot(eps, individual, marker='D', label='Interval', linestyle='-', color='cornflowerblue')
+            plt.plot(eps, io_formulation, marker='s', label='Zonotope', linestyle='-', color='indianred')
+            if raven_no_diff is not None:
+                plt.plot(eps, raven_no_diff, marker='+', label='Pasado', linestyle='-', color='purple')
+            plt.plot(eps, raven, marker='o', label='RaVeN', linestyle='-', color='darkseagreen')
+
+        else:
+            plt.plot(eps, individual, marker='D', label='Individual', linestyle='-', color='cornflowerblue')
+            plt.plot(eps, io_formulation, marker='s', label='I/O Formulation', linestyle='-', color='indianred')
+            plt.plot(eps, raven, marker='o', label='RaVeN', linestyle='-', color='darkseagreen')
+            if raven_no_diff is not None:
+                plt.plot(eps, raven_no_diff, marker='+', label='RaVeN Layerwise', linestyle='-', color='black')
         plt.legend(loc=4, fontsize="10")
         # Add labels and a legend
-        plt.xlabel('Epsilon', fontsize=15)
-        plt.ylabel('Worst Case Accuracy (%)', fontsize=15)
-        plt.legend(loc=3, fontsize="12")
+        #plt.gca().yaxis.label.set(rotation='horizontal', ha='left');
+        bbox = ax.get_yticklabels()[-1].get_window_extent()
+        x,_ = ax.transAxes.inverted().transform([bbox.x0, bbox.y0])
+        if binary:
+            ax.set_ylim(0.0, 20.0)
+        elif cls:
+            ax.set_ylim(0.0, 40.0)
+        else:
+            ax.set_ylim(0.0, 100.0)
+        if 'cifar' in net_name:
+            plt.xlabel('Epsilon (*/255)', fontsize=15)
+        else:
+            plt.xlabel('Epsilon', fontsize = 15)
+        if binary:
+            #plt.ylabel('Average Worst Case Hamming Distance', fontsize=15)
+            ax.set_title('Average Worst Case Hamming Distance', fontsize=15, ha='left', x=x)
+        elif cls:
+            #plt.ylabel('# Verifiably Monotonic Features', fontsize=15)
+            ax.set_title('# Verifiably Monotonic Features', fontsize=15, ha='left', x=x)
+        else:
+            #plt.ylabel('Average Worst Case Accuracy (%)', fontsize=15)
+            ax.set_title('Average Worst Case Accuracy (%)', fontsize=15, ha='left', x=x)
+        if cls:
+            plt.legend(loc=4, fontsize="12")
+        else:
+            plt.legend(loc=3, fontsize="12")
         plt.tight_layout(pad=0.5)
         dir_name = 'plots'
         diff = '' if raven_no_diff is None else '_diff'
-        # plt.show()
+        # plt.show()    
         plot_name = f'{dir_name}/{net_name}_{domain}{diff}.png'
-        plt.savefig(plot_name, dpi=300)
+        #print(plot_name)
+        plt.savefig(plot_name, dpi=600,  bbox_inches='tight')
 
     def get_threshold(self, net_name):
         for key in self.thersholds.keys():
@@ -87,8 +130,9 @@ class DataStructList:
         epsilons.sort()
         length = 0
         for epsilon in epsilons:
-            if threshold is not None and epsilon > threshold:
-                break
+            if threshold is not None:
+                if epsilon > threshold[1] or epsilon < threshold[0]:
+                    continue
             length += 1
             individual.append(temp_dict[epsilon][0])  
             io_formulation.append(temp_dict[epsilon][1])
@@ -107,7 +151,7 @@ class DataStructList:
         list_length = 0
         for data in self.data_struct_list:
             eps = data.eps
-            if eps > threshold:
+            if eps > threshold[1] or eps < threshold[0]:
                 continue
             avg_timings = avg_timings + data.times
             avg_MILP_times = avg_MILP_times + data.MILP_times
@@ -120,7 +164,7 @@ class DataStructList:
 
 def copy_files():
     # Specify the source and destination directories
-    source_directory = '../pldi-results/'  # Replace with the source directory path
+    source_directory = '../cifar_results/'  # Replace with the source directory path
     destination_directory = './raw_results/'  # Replace with the destination directory path
 
     # Use shutil.copy() to copy all files from the source directory to the destination directory
@@ -191,7 +235,7 @@ def process_file(file):
             if tokens[0] == 'No':
                 MILP_times[0] += float(tokens[-1])
             else:
-                MILP_times[1] += float(tokens[-1])                
+                MILP_times[1] += float(tokens[-1])
     data_struct = DataStruct(eps = eps, individual_percentage = individual_percentage, IO_percentage = IO_percentage,
                             raven_no_diff_percentage = raven_no_diff_percentage, raven_percentage = raven_percentage,
                             times = times, MILP_times = MILP_times)
@@ -214,6 +258,7 @@ def read_files(net_name, domains, thersholds, ans_dict):
 
     # Use the glob.glob() function to find files that match the pattern
     file_list = glob.glob(directory + '/' + pattern)
+    #print(file_list)
 
     avg_timings = {}
 
@@ -236,19 +281,68 @@ def read_files(net_name, domains, thersholds, ans_dict):
 
 
 def main():
-    net_names = [config.MNIST_CROWN_IBP,
+    net_names = {config.MNIST_CROWN_IBP: 'Crown IBP',
                  config.MNIST_CROWN_IBP_MED,
                  config.MNIST_CONV_SMALL_DIFFAI,
-                 config.MNIST_CONV_BIG]
+                 config.MNIST_CONV_BIG,
+                 config.CIFAR_CROWN_IBP,
+                 config.CIFAR_CONV_SMALL_DIFFAI,
+                 config.CIFAR_CROWN_IBP_MEDIUM,
+                 config.CIFAR_CONV_BIG,
+                 'mnist_binary_sigmoid_pgd',
+                 'mnist_binary_tanh_pgd',
+                 'mnist_binary_relu_pgd',
+                 'cls_tanh'}
     thersholds = {}
-    thersholds[config.MNIST_CROWN_IBP] = 0.1503
-    thersholds[config.MNIST_CONV_SMALL_DIFFAI] = 0.1503
-    thersholds[config.MNIST_CROWN_IBP_MED] = 0.203
-    thersholds[config.MNIST_CONV_BIG] = 0.251
+    thersholds[config.MNIST_CROWN_IBP] = 0, 0.1503
+    thersholds[config.MNIST_CONV_SMALL_DIFFAI] = 0, 0.1503
+    thersholds[config.MNIST_CROWN_IBP_MED] = 0, 0.203
+    thersholds[config.MNIST_CONV_BIG] = 0, 0.251
+    thersholds[config.CIFAR_CROWN_IBP] = 0, 100#0.1503
+    thersholds[config.CIFAR_CONV_SMALL_DIFFAI] = 0, 100#0.1503
+    thersholds[config.CIFAR_CROWN_IBP_MEDIUM] = 0, 3.01/255#0.203
+    thersholds[config.CIFAR_CONV_BIG] = 0, 2.51/255#0.251
+    thersholds['mnist_binary_sigmoid_pgd'] = 0, 100000
+    thersholds['mnist_binary_tanh_pgd'] = 0, 100000
+    thersholds['mnist_binary_relu_pgd'] = 0, 100000
+    thersholds['cls_tanh'] = 0.0999, 100000
     domains = ['DEEPZ', 'DEEPPOLY']
     ans_dict = {}
     for net_name in net_names:
         read_files(net_name=net_name, domains=domains, thersholds=thersholds, ans_dict=ans_dict) 
+    
+
+    sns.set_style("darkgrid")
+    sns.set_context('paper')
+    # Plot the three line plots
+    plt.figure(figsize=(6, 4.5)) 
+    verified_amount = {
+        'Individual': [29.25, 34.5, 26.75, 29.75, 28.5, 30.5, 31.5, 30.25, 34.0, 29.25],
+        'I/O Formulation': [29.75, 34.75, 27.0, 30.0, 29.0, 31.0,31.75, 30.5, 34.0, 29.75],
+        'RaVeN': [54.5, 63.0, 49.0, 54.0, 55.5, 58.5, 62.0, 56.0, 69.5, 58.0],
+    }
+
+    x = np.arange(10)  # the label locations
+    width = 0.25  # the width of the bars
+    multiplier = 0
+
+    fig, ax = plt.subplots(layout='constrained', figsize = (12, 4))
+    ax.grid(axis='x')
+    for attribute, measurement in verified_amount.items():
+        offset = width * multiplier
+        rects = ax.bar(x + offset, measurement, width, label=attribute, color='cornflowerblue' if attribute == 'Individual' else 'indianred' if attribute == 'I/O Formulation' else 'darkseagreen')
+        #ax.bar_label(rects, padding=3)
+        multiplier += 1
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    ax.set_ylabel('Average Worst-Case Targeted Accuracy (%)')
+    ax.set_xlabel('Target Label')
+    ax.set_xticks(x + width, x)
+    ax.legend(loc='upper left', ncols=3)
+    #ax.bar_label(False)
+    #ax.set_ylim(0, 30)
+
+    plt.savefig('plots/targeted.png', dpi=600,  bbox_inches='tight')
 
 
     

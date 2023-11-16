@@ -58,7 +58,7 @@ class UAPLPtransformer:
         self.optimize_time = None
         self.args = args
         self.g_constrs = []
-        self.par_constraints = True
+        self.par_constraints = False
         self.bint = 1e15
         self.lightweight_difference = self.args.lightweight_diffpoly
         if self.lightweight_difference and self.args.fold_conv_layers:
@@ -74,6 +74,8 @@ class UAPLPtransformer:
         # For debug input.
         elif self.input_size == 2:
             self.shape = (1, 1, 2)
+        elif self.input_size == 87:
+            self.shape = (1, 1, 87)
         else:
             raise ValueError("Unsupported dataset!")
 
@@ -158,7 +160,60 @@ class UAPLPtransformer:
 
     def optimize_monotone(self, monotone):
         # TODO(debangshu) Implement the monotonicity verifier separately may be.
-        return 0.0    
+        assert len(self.constraint_matrices) == self.batch_size
+        if self.batch_size <= 0:
+            return 0.0
+        #final_var_min = self.gmdl.addVar(lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, name=f'final_var_min')
+        #BIG_M = 1e11
+        #print(f"gurobi dict len: {self.gurobi_variables[-1]['ds'][0][0]}")
+        #self.gmdl.addConstr(BIG_M * self.gurobi_variables[-1]['ds'][0][0] >= final_var_min)
+        #self.gmdl.addConstr(BIG_M * (self.gurobi_variables[-1]['ds'][0][0] - 1) <= final_var_min)
+        self.gmdl.update()
+        self.gmdl.setObjective(self.gurobi_variables[-1]['ds'][0][0], grb.GRB.MINIMIZE)
+        
+        self.constraint_time += time.time()
+        self.optimize_time = - time.time()        
+        self.gmdl.optimize(softtime)
+        self.optimize_time += time.time()
+         
+        if self.debug_mode is True:
+            print("Here")
+            self.gmdl.write("./debug_logs/model.lp")
+            # self.gmdl.write("./debug_logs/out.sol")
+        
+        if self.gmdl.status in [2, 6, 10]:
+            #self.debug_log_file.write(f"proportion {p.X}\n")
+            # print(f"verified proportion {p.X}\n")
+            self.debug_log_file.close()
+            # print("Final MIP gap value: %f" % self.gmdl.MIPGap)
+            # print("Final ObjBound: %f" % self.gmdl.ObjBound)
+            return self.gmdl.ObjBound
+        else:
+            if self.gmdl.status == 4:
+                return 0.0
+            elif self.gmdl.status in [9, 11, 13]:
+                print("Suboptimal solution")
+                self.debug_log_file.close()
+                print("Final MIP gap value: %f" % self.gmdl.MIPGap)
+                try:
+                    print("Final MIP best value: %f" % p.X)
+                except:
+                    print("No solution obtained")
+                print("Final ObjBound: %f" % self.gmdl.ObjBound)
+                if self.gmdl.SolCount > 0:
+                    return self.gmdl.ObjBound
+                else:
+                    return 0.0
+            self.debug_log_file.close()    
+            print("Gurobi model status", self.gmdl.status)
+            print("The optimization failed\n")
+            # print("Computing computeIIS")
+            # self.gmdl.computeIIS()
+            # print("Computing computeIIS finished")            
+            # self.gmdl.write("model.ilp")
+            self.debug_log_file.close()
+            return 0.0
+        #return 0.0    
 
     def optimize_targeted(self):
         percentages = []
@@ -175,7 +230,7 @@ class UAPLPtransformer:
                     continue
                 final_var = self.gmdl.addMVar(constraint_mat.shape[1], lb=-float('inf'), ub=float('inf'), vtype=grb.GRB.CONTINUOUS, 
                                                 name=f'final_var_{i}')
-                self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_variables[-1]['vs'][i])
+                self.gmdl.addConstr(final_var == constraint_mat.T.detach().numpy() @ self.gurobi_var_dict[len(self.gurobi_var_dict) - 2]['vs'][i])
                 final_vars.append(final_var)
                 final_var_max = self.gmdl.addVar(lb=-float('inf'), ub=float('inf'), 
                                                     vtype=grb.GRB.CONTINUOUS, 

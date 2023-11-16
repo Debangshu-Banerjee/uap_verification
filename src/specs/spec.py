@@ -333,11 +333,11 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None,
                 inputs = inputs.repeat_interleave(count_per_prop, dim=0)
                 inputs += torch.rand(inputs.size()) * (eps / 4.5) 
                 labels = labels.repeat_interleave(count_per_prop, dim=0)
-            inputs, labels = process_input_for_sink_label(inputs=inputs, labels=labels, 
-                                                          sink_label=sink_label, target_count=count)
+            # inputs, labels = process_input_for_sink_label(inputs=inputs, labels=labels, 
+            #                                               sink_label=sink_label, target_count=count)
             inputs, labels = remove_unclassified_images(inputs, labels, dataset, net_name)
             inputs, labels = inputs[:count], labels[:count]
-            props = get_targeted_UAP_spec(inputs, eps, dataset, sink_label=torch.tensor(sink_label), net_name=net_name)
+            props = get_targeted_UAP_spec(inputs, labels, eps, dataset, net_name=net_name)
         elif spec_type == InputSpecType.UAP_BINARY:
             testloader = prepare_data(dataset, batch_size=12*count)
             inputs, labels = next(iter(testloader))
@@ -423,9 +423,9 @@ def get_specs(dataset, spec_type=InputSpecType.LINF, eps=0.01, count=None,
         test_data = data[num_train:]
         test_labels = labels.iloc[num_train:]
         test_data, test_labels = torch.tensor(np.array(test_data), dtype = torch.float32), torch.tensor(np.array(test_labels), dtype = torch.float32)
-        test_dataset, test_labels = test_dataset[:count].reshape(count, 1, 87), test_labels[:count]
-        props = get_monotone_spec(test_dataset, test_labels, eps, dataset, monotone_prop = monotone_prop, monotone_inv = monotone_inv)
-        return props, test_dataset
+        test_data, test_labels = test_data[:count].reshape(count, 1, 87), test_labels[:count]
+        props = get_monotone_spec(test_data, test_labels, eps, dataset, monotone_prop = monotone_prop, monotone_inv = monotone_inv)
+        return props, test_data
 
     elif dataset == Dataset.ACAS:
         return get_acas_props(count), None
@@ -574,7 +574,7 @@ def get_binary_uap_spec(inputs, labels, eps, dataset, net_name=''):
     return properties
 
 
-def get_targeted_UAP_spec(inputs, eps, dataset, sink_label, net_name=''):
+def get_targeted_UAP_spec(inputs, labels, eps, dataset, net_name=''):
     properties = []
 
     for i in range(len(inputs)):
@@ -592,8 +592,8 @@ def get_targeted_UAP_spec(inputs, eps, dataset, sink_label, net_name=''):
         ilb = ilb.reshape(-1)
         iub = iub.reshape(-1)
 
-        out_constr = Constraint(OutSpecType.LOCAL_ROBUST, sink_label=sink_label)
-        properties.append(Property(ilb, iub, InputSpecType.UAP, out_constr, dataset, input=image))
+        out_constr = Constraint(OutSpecType.LOCAL_ROBUST, label=labels[i])
+        properties.append(Property(ilb, iub, InputSpecType.UAP, out_constr, dataset, input=image, targeted = True))
 
     return properties
 
